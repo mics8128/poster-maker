@@ -34,7 +34,8 @@ h1 { font-size: 22px; margin: 0; }
 .header { display: flex; align-items: baseline; gap: 8px; }
 .field { display: flex; flex-direction: column; gap: 6px; }
 .label { font-weight: 650; font-size: 13px; }
-.row { display: flex; gap: 8px; align-items: center; }
+.row { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 8px; align-items: center; }
+.row button { white-space: nowrap; }
 input, select {
   width: 100%;
   border: 1px solid #c9cdd3;
