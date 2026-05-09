@@ -152,14 +152,17 @@ fn line_outer_points(a: (f64, f64), b: (f64, f64)) -> ((f64, f64), (f64, f64)) {
 }
 
 fn draw_crop_line_with_boxes(out: &mut String, a: (f64, f64), b: (f64, f64), page_h: f64) {
+    // Crop line is dashed; endpoint boxes are solid so they don't look broken.
+    set_stroke(out, 0.9, 0.0, 0.0, 0.9, Some("[7 3] 0"));
     draw_line(out, a, b, page_h);
     draw_end_boxes(out, a, b, page_h);
 }
 
 fn draw_end_boxes(out: &mut String, a: (f64, f64), b: (f64, f64), page_h: f64) {
+    set_stroke(out, 0.9, 0.0, 0.0, 0.7, None);
     let (s, e) = line_outer_points(a, b);
-    draw_x_box(out, s, 7.0, page_h);
-    draw_x_box(out, e, 7.0, page_h);
+    draw_x_box(out, s, 9.0, page_h);
+    draw_x_box(out, e, 9.0, page_h);
 }
 
 fn set_stroke(out: &mut String, r: f64, g: f64, b: f64, width: f64, dash: Option<&str>) {
