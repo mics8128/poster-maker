@@ -4,9 +4,11 @@ __pycache__/
 build/
 dist/
 node_modules/
+.pnpm-store/
 release/
 src-tauri/target/
 src-tauri/gen/
+tauri-dev.*.log
 # Keep PyInstaller specs tracked; ignore generated build/dist instead.
 .DS_Store
 .pytest_cache/

@@ -2,11 +2,11 @@
 
 Poster Maker 是一個海報分割工具：選一張圖片，輸出多頁 A4 PDF，列印後裁切、重疊、拼貼成大海報。
 
-目前主線是 **Rust + Tauri image-only alpha**。舊 Python 版已從工作樹移除，需要時可從 git history 取回。
+目前主線是 **Rust + Tauri image-only**。舊 Python 版已從工作樹移除，需要時可從 git history 取回。
 
 ## 下載
 
-最新 alpha：`v0.2.0-alpha.2`
+最新版本：`v0.2.0`
 
 GitHub Releases：
 
@@ -18,10 +18,12 @@ https://github.com/mics8128/poster-maker/releases
 
 - macOS Apple Silicon DMG
 - macOS Apple Silicon CLI
+- Windows NSIS installer
+- Windows MSI installer
+- Windows CLI
 
 暫不提供：
 
-- Windows build：等 Windows 本機驗證；之前 MSI 不能吃 `0.2.0-alpha.N` 版本號
 - macOS Intel build
 - macOS notarization
 - PDF 輸入
@@ -105,10 +107,10 @@ cargo run --bin poster-maker-cli -- /path/to/image.jpg --grid 3x2 -o output.pdf 
 
 CLI 預設輸出到來源圖片同一個資料夾。
 
-## macOS alpha 打包
+## macOS 打包
 
 ```bash
-VERSION=0.2.0-alpha.2 scripts/build_macos_alpha.sh
+VERSION=0.2.0 scripts/build_macos_alpha.sh
 ```
 
 這個腳本會：
@@ -145,14 +147,14 @@ src/                         Svelte GUI
 src-tauri/src/layout.rs      layout / best fit
 src-tauri/src/pdf_output.rs  shared preview/PDF geometry + minimal PDF writer
 src-tauri/src/cli.rs         CLI entrypoint
-scripts/build_macos_alpha.sh local macOS alpha packaging
+scripts/build_macos_alpha.sh local macOS packaging
 scripts/sync-version.mjs     version sync helper
 ```
 
 ## 已知限制 / 下一步
 
 - macOS app 目前 ad-hoc signed，未 notarized。
-- Windows release 暫停，需本機驗證 NSIS/zip 或改用 MSI-compatible 版本號。
+- Windows prerelease tag 若恢復使用，MSI 需要設定 `bundle.windows.wix.version` 成數字版號並重新檢查升級語意。
 - macOS Intel 暫不 build。
 - PDF 輸入留到第二階段。
 - 還需要 fixture-based PDF smoke test：產生 PDF 後驗證頁數與 A4 尺寸。
