@@ -151,6 +151,31 @@ def _source_fit_rect(src_rect: fitz.Rect, total_w: float, total_h: float) -> fit
     return fitz.Rect(x0, y0, x0 + fitted_w, y0 + fitted_h)
 
 
+def _max_overlap_extra(count: int, overlap: float) -> float:
+    if count <= 1:
+        return 0
+    if count == 2:
+        return overlap
+    return overlap * 2
+
+
+def poster_canvas_size(printable: fitz.Rect, cols: int, rows: int, overlap: float) -> tuple[float, float, float, float]:
+    """Return base tile size and total poster canvas size in printed points.
+
+    The key invariant: every page uses the same 1:1 print scale. We shrink the
+    non-overlapped base tile so the largest overlapped page still fits inside
+    the printable A4 area. This prevents middle tiles (which have overlap on two
+    sides) from being scaled smaller than edge tiles.
+    """
+    max_extra_x = _max_overlap_extra(cols, overlap)
+    max_extra_y = _max_overlap_extra(rows, overlap)
+    base_w = printable.width - max_extra_x
+    base_h = printable.height - max_extra_y
+    if base_w <= 0 or base_h <= 0:
+        raise ValueError("Overlap is too large for the selected paper margin/grid")
+    return base_w, base_h, base_w * cols, base_h * rows
+
+
 def _tile_clip(fitted_rect: fitz.Rect, col: int, row: int, cols: int, rows: int, overlap: float) -> fitz.Rect:
     tile_w = fitted_rect.width / cols
     tile_h = fitted_rect.height / rows
@@ -287,9 +312,9 @@ def generate_poster_pdf(input_path: str | Path, output_path: str | Path, options
     overlap = mm(options.overlap_mm)
     printable = fitz.Rect(margin, margin, w - margin, h - margin)
 
-    # Virtual poster canvas uses non-overlapped printable area per tile.
-    total_w = printable.width * layout.cols
-    total_h = printable.height * layout.rows
+    # Virtual poster canvas uses fixed print units. Base tiles are reduced so
+    # even interior pages with overlap on both sides fit A4 without rescaling.
+    _base_w, _base_h, total_w, total_h = poster_canvas_size(printable, layout.cols, layout.rows, overlap)
     fitted = _source_fit_rect(src_rect, total_w, total_h)
 
     generated: list[GeneratedPage] = []
@@ -297,11 +322,8 @@ def generate_poster_pdf(input_path: str | Path, output_path: str | Path, options
         for col in range(layout.cols):
             page = out.new_page(width=w, height=h)
             clip_canvas = _tile_clip(fitted, col, row, layout.cols, layout.rows, overlap)
-            visible_w = clip_canvas.width
-            visible_h = clip_canvas.height
-            scale = min(printable.width / visible_w, printable.height / visible_h)
-            draw_w = visible_w * scale
-            draw_h = visible_h * scale
+            draw_w = clip_canvas.width
+            draw_h = clip_canvas.height
             dest = fitz.Rect(
                 (w - draw_w) / 2,
                 (h - draw_h) / 2,

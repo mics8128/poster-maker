@@ -25,7 +25,7 @@ from PySide6.QtWidgets import (
 )
 
 from . import __version__
-from .core import PosterOptions, generate_poster_pdf, load_source_as_pdf, mm, page_size, resolve_layout
+from .core import PosterOptions, generate_poster_pdf, load_source_as_pdf, mm, page_size, poster_canvas_size, resolve_layout
 
 
 def pt_to_cm(value: float) -> float:
@@ -250,8 +250,8 @@ class MainWindow(QMainWindow):
             pen_outer.setColor(Qt.gray)
             pen_overlap = QPen(Qt.darkCyan, 1, Qt.DotLine)
 
-            printable_w = (w_pt - 2 * margin_pt) * layout.cols
-            printable_h = (h_pt - 2 * margin_pt) * layout.rows
+            printable = type(src_rect)(margin_pt, margin_pt, w_pt - margin_pt, h_pt - margin_pt)
+            _base_w, _base_h, printable_w, printable_h = poster_canvas_size(printable, layout.cols, layout.rows, mm(options.overlap_mm))
             fit_scale = min(printable_w / src_rect.width, printable_h / src_rect.height)
             fitted_w_pt = src_rect.width * fit_scale
             fitted_h_pt = src_rect.height * fit_scale
