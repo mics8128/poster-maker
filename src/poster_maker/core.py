@@ -27,7 +27,8 @@ class PosterOptions:
     draw_alignment_guides: bool = True
     draw_labels: bool = False
     page_index: int = 0
-    auto_landscape: bool = False
+    auto_landscape: bool = True
+    auto_layout: bool = True
 
 
 @dataclass(frozen=True)
@@ -37,25 +38,67 @@ class GeneratedPage:
     clip: fitz.Rect
 
 
+@dataclass(frozen=True)
+class ResolvedLayout:
+    cols: int
+    rows: int
+    landscape: bool
+    score: float
+
+
 def page_size(landscape: bool) -> tuple[float, float]:
     return (A4_HEIGHT_PT, A4_WIDTH_PT) if landscape else (A4_WIDTH_PT, A4_HEIGHT_PT)
 
 
+def _layout_score(src_rect: fitz.Rect, cols: int, rows: int, landscape: bool, margin_pt: float) -> float:
+    w, h = page_size(landscape)
+    printable = fitz.Rect(margin_pt, margin_pt, w - margin_pt, h - margin_pt)
+    total_w = printable.width * cols
+    total_h = printable.height * rows
+    scale = min(total_w / src_rect.width, total_h / src_rect.height)
+    return (src_rect.width * scale) * (src_rect.height * scale)
+
+
+def resolve_layout(src_rect: fitz.Rect, options: PosterOptions) -> ResolvedLayout:
+    """Resolve grid/orientation.
+
+    Best layout treats 3x2 and 2x3 as the same 6-sheet request. It tries both
+    grid directions and both A4 orientations, then picks the one that uses the
+    largest printable poster area.
+    """
+    margin_pt = mm(options.margin_mm)
+    grid_candidates = [(options.cols, options.rows)]
+    if options.auto_layout and options.cols != options.rows:
+        grid_candidates.append((options.rows, options.cols))
+
+    best: ResolvedLayout | None = None
+    src_ratio = src_rect.width / src_rect.height
+    for cols, rows in grid_candidates:
+        landscapes = (False, True) if (options.auto_layout or options.auto_landscape) else (options.landscape,)
+        for landscape in landscapes:
+            score = _layout_score(src_rect, cols, rows, landscape, margin_pt)
+            candidate = ResolvedLayout(cols, rows, landscape, score)
+            if best is None:
+                best = candidate
+                continue
+            if candidate.score > best.score * 1.000001:
+                best = candidate
+                continue
+            if abs(candidate.score - best.score) <= max(best.score, 1) * 0.000001:
+                cw, ch = page_size(candidate.landscape)
+                bw, bh = page_size(best.landscape)
+                candidate_ratio = (cw * candidate.cols) / (ch * candidate.rows)
+                best_ratio = (bw * best.cols) / (bh * best.rows)
+                if abs(candidate_ratio - src_ratio) < abs(best_ratio - src_ratio):
+                    best = candidate
+    assert best is not None
+    return best
+
+
 def choose_landscape(src_rect: fitz.Rect, cols: int, rows: int, margin_pt: float) -> bool:
     """Pick A4 portrait/landscape orientation with larger used poster area."""
-    best_landscape = False
-    best_score = -1.0
-    for landscape in (False, True):
-        w, h = page_size(landscape)
-        printable = fitz.Rect(margin_pt, margin_pt, w - margin_pt, h - margin_pt)
-        total_w = printable.width * cols
-        total_h = printable.height * rows
-        scale = min(total_w / src_rect.width, total_h / src_rect.height)
-        score = (src_rect.width * scale) * (src_rect.height * scale)
-        if score > best_score:
-            best_score = score
-            best_landscape = landscape
-    return best_landscape
+    options = PosterOptions(cols=cols, rows=rows, margin_mm=margin_pt / MM_TO_PT, auto_layout=False, auto_landscape=True)
+    return resolve_layout(src_rect, options).landscape
 
 
 def mm(value: float) -> float:
@@ -239,21 +282,21 @@ def generate_poster_pdf(input_path: str | Path, output_path: str | Path, options
 
     out = fitz.open()
     margin = mm(options.margin_mm)
-    landscape = choose_landscape(src_rect, options.cols, options.rows, margin) if options.auto_landscape else options.landscape
-    w, h = page_size(landscape)
+    layout = resolve_layout(src_rect, options)
+    w, h = page_size(layout.landscape)
     overlap = mm(options.overlap_mm)
     printable = fitz.Rect(margin, margin, w - margin, h - margin)
 
     # Virtual poster canvas uses non-overlapped printable area per tile.
-    total_w = printable.width * options.cols
-    total_h = printable.height * options.rows
+    total_w = printable.width * layout.cols
+    total_h = printable.height * layout.rows
     fitted = _source_fit_rect(src_rect, total_w, total_h)
 
     generated: list[GeneratedPage] = []
-    for row in range(options.rows):
-        for col in range(options.cols):
+    for row in range(layout.rows):
+        for col in range(layout.cols):
             page = out.new_page(width=w, height=h)
-            clip_canvas = _tile_clip(fitted, col, row, options.cols, options.rows, overlap)
+            clip_canvas = _tile_clip(fitted, col, row, layout.cols, layout.rows, overlap)
             visible_w = clip_canvas.width
             visible_h = clip_canvas.height
             scale = min(printable.width / visible_w, printable.height / visible_h)
@@ -277,13 +320,13 @@ def generate_poster_pdf(input_path: str | Path, output_path: str | Path, options
             )
             page.show_pdf_page(dest, src_doc, src_pno, clip=src_clip, keep_proportion=False)
 
-            base_canvas = _base_tile_rect(fitted, col, row, options.cols, options.rows)
+            base_canvas = _base_tile_rect(fitted, col, row, layout.cols, layout.rows)
             if options.draw_cut_marks:
                 _draw_cut_marks(page, dest)
             if options.draw_alignment_guides:
-                _draw_assembly_guides(page, dest, clip_canvas, base_canvas, col, row, options.cols, options.rows)
+                _draw_assembly_guides(page, dest, clip_canvas, base_canvas, col, row, layout.cols, layout.rows)
             if options.draw_labels:
-                label = f"{Path(input_path).name}  |  row {row + 1}/{options.rows}, col {col + 1}/{options.cols}  |  overlap {options.overlap_mm:g} mm"
+                label = f"{Path(input_path).name}  |  row {row + 1}/{layout.rows}, col {col + 1}/{layout.cols}  |  overlap {options.overlap_mm:g} mm"
                 page.insert_text((margin, h - margin / 2), label, fontsize=8, color=(0.2, 0.2, 0.2))
 
             generated.append(GeneratedPage(col=col + 1, row=row + 1, clip=src_clip))
@@ -311,7 +354,8 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--margin-mm", type=float, default=8)
     parser.add_argument("--dpi", type=int, default=200, help="DPI used for image physical size")
     parser.add_argument("--landscape", action="store_true")
-    parser.add_argument("--auto-orientation", action="store_true", help="Automatically choose A4 portrait/landscape")
+    parser.add_argument("--auto-orientation", action="store_true", default=True, help="Automatically choose A4 portrait/landscape")
+    parser.add_argument("--no-auto-layout", action="store_true", help="Do not swap grid dimensions for best fit")
     parser.add_argument("--no-cut-marks", action="store_true")
     parser.add_argument("--no-alignment-guides", action="store_true")
     parser.add_argument("--labels", action="store_true")
@@ -331,6 +375,7 @@ def main(argv: list[str] | None = None) -> int:
         draw_labels=args.labels,
         page_index=args.page - 1,
         auto_landscape=args.auto_orientation,
+        auto_layout=not args.no_auto_layout,
     )
     pages = generate_poster_pdf(args.input, args.output, options)
     print(f"Generated {len(pages)} A4 pages: {args.output}")
