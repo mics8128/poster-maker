@@ -46,7 +46,7 @@
   let busy = false;
 
   $: options = { cols, rows, overlapMm, marginMm, drawOuterMarks: true, drawCutGuides: true } satisfies PosterOptions;
-  $: previewImageSrc = inputPath ? convertFileSrc(inputPath) : '';
+  $: previewImageSrc = inputPath ? convertFileSrc(inputPath, 'asset') : '';
   $: if (inputPath) refreshPreview(options, inputPath);
 
   let customCols = 3;
