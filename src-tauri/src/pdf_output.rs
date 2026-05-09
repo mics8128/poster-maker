@@ -152,7 +152,7 @@ fn build_page_content(tile: TileGeometry, row: u32, col: u32, options: &PosterOp
     }
     if options.draw_cut_guides {
         let guides = guide_geometry(tile);
-        draw_cut_and_alignment_guides(&mut out, tile.dest_page, guides, row, col, preview, preview.page_height_pt);
+        draw_cut_and_alignment_guides(&mut out, tile.dest_page, guides, row, col, preview, preview.page_width_pt, preview.page_height_pt);
     }
     out
 }
@@ -172,33 +172,60 @@ fn guide_geometry(tile: TileGeometry) -> GuideGeometry {
 // Guide/line drawing only. These functions must not change tile/grid geometry.
 // -----------------------------------------------------------------------------
 
-fn draw_cut_and_alignment_guides(out: &mut String, dest: Rect, guides: GuideGeometry, row: u32, col: u32, preview: &PreviewInfo, page_h: f64) {
+fn draw_cut_and_alignment_guides(out: &mut String, dest: Rect, guides: GuideGeometry, row: u32, col: u32, preview: &PreviewInfo, page_w: f64, page_h: f64) {
     if col > 0 {
-        draw_crop_line_with_boxes(out, Point { x: guides.left_x, y: dest.y0 }, Point { x: guides.left_x, y: dest.y1 }, page_h);
+        draw_crop_line_with_boxes(out, Point { x: guides.left_x, y: dest.y0 }, Point { x: guides.left_x, y: dest.y1 }, page_w, page_h);
     }
     if row > 0 {
-        draw_crop_line_with_boxes(out, Point { x: dest.x0, y: guides.top_y }, Point { x: dest.x1, y: guides.top_y }, page_h);
+        draw_crop_line_with_boxes(out, Point { x: dest.x0, y: guides.top_y }, Point { x: dest.x1, y: guides.top_y }, page_w, page_h);
     }
     if col < preview.cols - 1 {
-        draw_marker_boxes(out, Point { x: guides.right_x, y: dest.y0 }, Point { x: guides.right_x, y: dest.y1 }, page_h);
+        draw_marker_boxes(out, Point { x: guides.right_x, y: dest.y0 }, Point { x: guides.right_x, y: dest.y1 }, page_w, page_h);
     }
     if row < preview.rows - 1 {
-        draw_marker_boxes(out, Point { x: dest.x0, y: guides.bottom_y }, Point { x: dest.x1, y: guides.bottom_y }, page_h);
+        draw_marker_boxes(out, Point { x: dest.x0, y: guides.bottom_y }, Point { x: dest.x1, y: guides.bottom_y }, page_w, page_h);
     }
 }
 
-fn draw_crop_line_with_boxes(out: &mut String, a: Point, b: Point, page_h: f64) {
+fn draw_crop_line_with_boxes(out: &mut String, a: Point, b: Point, page_w: f64, page_h: f64) {
     draw_contrast_line(out, a, b, page_h);
-    draw_marker_boxes(out, a, b, page_h);
+    draw_marker_boxes(out, a, b, page_w, page_h);
 }
 
-fn draw_marker_boxes(out: &mut String, a: Point, b: Point, page_h: f64) {
-    // Markers sit outside the image at the line ends. For a vertical left trim
-    // line this means top marker moves up and bottom marker moves down, not left/right.
-    let offset = MARKER_SIZE_PT / 2.0 + MARKER_GAP_PT;
+fn draw_marker_boxes(out: &mut String, a: Point, b: Point, page_w: f64, page_h: f64) {
+    // Markers sit outside the image at the line ends. If page margin is too tight
+    // for the full marker size, shrink that marker so it stays visible on-page.
     let (a_dir, b_dir) = endpoint_dirs(a, b);
-    draw_x_box(out, Point { x: a.x + a_dir.x * offset, y: a.y + a_dir.y * offset }, MARKER_SIZE_PT, page_h);
-    draw_x_box(out, Point { x: b.x + b_dir.x * offset, y: b.y + b_dir.y * offset }, MARKER_SIZE_PT, page_h);
+    draw_marker_at(out, a, a_dir, page_w, page_h);
+    draw_marker_at(out, b, b_dir, page_w, page_h);
+}
+
+fn draw_marker_at(out: &mut String, anchor: Point, dir: Point, page_w: f64, page_h: f64) {
+    let available = outward_space(anchor, dir, page_w, page_h);
+    let size = MARKER_SIZE_PT.min((available - MARKER_GAP_PT).max(4.0));
+    let offset = size / 2.0 + MARKER_GAP_PT;
+    let center = clamp_marker_center(Point { x: anchor.x + dir.x * offset, y: anchor.y + dir.y * offset }, size, page_w, page_h);
+    draw_x_box(out, center, size, page_h);
+}
+
+fn outward_space(anchor: Point, dir: Point, page_w: f64, page_h: f64) -> f64 {
+    if dir.x < -0.5 {
+        anchor.x
+    } else if dir.x > 0.5 {
+        page_w - anchor.x
+    } else if dir.y < -0.5 {
+        anchor.y
+    } else {
+        page_h - anchor.y
+    }
+}
+
+fn clamp_marker_center(center: Point, size: f64, page_w: f64, page_h: f64) -> Point {
+    let half = size / 2.0;
+    Point {
+        x: center.x.clamp(half, page_w - half),
+        y: center.y.clamp(half, page_h - half),
+    }
 }
 
 fn endpoint_dirs(a: Point, b: Point) -> (Point, Point) {
