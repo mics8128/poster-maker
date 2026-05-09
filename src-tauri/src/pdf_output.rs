@@ -148,7 +148,7 @@ fn build_page_content(tile: TileGeometry, row: u32, col: u32, options: &PosterOp
     let mut out = String::new();
     draw_image(&mut out, tile.dest_page, preview.page_height_pt);
     if options.draw_outer_marks {
-        draw_outer_marks(&mut out, tile.dest_page, preview.page_height_pt);
+        draw_outer_marks(&mut out, tile.dest_page, preview.page_width_pt, preview.page_height_pt);
     }
     if options.draw_cut_guides {
         let guides = guide_geometry(tile);
@@ -217,20 +217,18 @@ fn draw_contrast_line(out: &mut String, a: Point, b: Point, page_h: f64) {
     draw_line(out, a, b, page_h);
 }
 
-fn draw_outer_marks(out: &mut String, dest: Rect, page_h: f64) {
+fn draw_outer_marks(out: &mut String, dest: Rect, page_w: f64, page_h: f64) {
     set_stroke(out, 0.65, 0.65, 0.65, 0.35, Some("[3 3] 0"));
-    draw_rect(out, dest, page_h);
-    let mark = 10.0;
     let gap = 2.0;
     for (a, b) in [
-        (Point { x: dest.x0 - mark, y: dest.y0 }, Point { x: dest.x0 - gap, y: dest.y0 }),
-        (Point { x: dest.x0, y: dest.y0 - mark }, Point { x: dest.x0, y: dest.y0 - gap }),
-        (Point { x: dest.x1 + gap, y: dest.y0 }, Point { x: dest.x1 + mark, y: dest.y0 }),
-        (Point { x: dest.x1, y: dest.y0 - mark }, Point { x: dest.x1, y: dest.y0 - gap }),
-        (Point { x: dest.x0 - mark, y: dest.y1 }, Point { x: dest.x0 - gap, y: dest.y1 }),
-        (Point { x: dest.x0, y: dest.y1 + gap }, Point { x: dest.x0, y: dest.y1 + mark }),
-        (Point { x: dest.x1 + gap, y: dest.y1 }, Point { x: dest.x1 + mark, y: dest.y1 }),
-        (Point { x: dest.x1, y: dest.y1 + gap }, Point { x: dest.x1, y: dest.y1 + mark }),
+        (Point { x: 0.0, y: dest.y0 }, Point { x: dest.x0 - gap, y: dest.y0 }),
+        (Point { x: dest.x0, y: 0.0 }, Point { x: dest.x0, y: dest.y0 - gap }),
+        (Point { x: dest.x1 + gap, y: dest.y0 }, Point { x: page_w, y: dest.y0 }),
+        (Point { x: dest.x1, y: 0.0 }, Point { x: dest.x1, y: dest.y0 - gap }),
+        (Point { x: 0.0, y: dest.y1 }, Point { x: dest.x0 - gap, y: dest.y1 }),
+        (Point { x: dest.x0, y: dest.y1 + gap }, Point { x: dest.x0, y: page_h }),
+        (Point { x: dest.x1 + gap, y: dest.y1 }, Point { x: page_w, y: dest.y1 }),
+        (Point { x: dest.x1, y: dest.y1 + gap }, Point { x: dest.x1, y: page_h }),
     ] {
         draw_line(out, a, b, page_h);
     }
@@ -243,10 +241,6 @@ fn set_stroke(out: &mut String, r: f64, g: f64, b: f64, width: f64, dash: Option
 
 fn draw_line(out: &mut String, a: Point, b: Point, page_h: f64) {
     out.push_str(&format!("{:.3} {:.3} m {:.3} {:.3} l S\n", a.x, page_h - a.y, b.x, page_h - b.y));
-}
-
-fn draw_rect(out: &mut String, r: Rect, page_h: f64) {
-    out.push_str(&format!("{:.3} {:.3} {:.3} {:.3} re S\n", r.x0, pdf_y(r.y0, r.height(), page_h), r.width(), r.height()));
 }
 
 fn draw_image(out: &mut String, dest: Rect, page_h: f64) {
