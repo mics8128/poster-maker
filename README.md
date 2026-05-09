@@ -17,13 +17,12 @@ https://github.com/mics8128/poster-maker/releases
 目前提供：
 
 - macOS Apple Silicon DMG
-- macOS Apple Silicon CLI
 - Windows NSIS installer
-- Windows MSI installer
-- Windows CLI
 
 暫不提供：
 
+- CLI release artifacts
+- Windows MSI installer
 - macOS Intel build
 - macOS notarization
 - PDF 輸入

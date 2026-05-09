@@ -62,27 +62,10 @@ jobs:
         with:
           args: --target aarch64-apple-darwin
 
-      - name: Build CLI
-        run: cargo build --manifest-path src-tauri/Cargo.toml --release --bin poster-maker-cli --target aarch64-apple-darwin
-
-      - name: Stage CLI artifact
-        shell: bash
-        run: |
-          mkdir -p cli-artifacts
-          cp src-tauri/target/aarch64-apple-darwin/release/poster-maker-cli cli-artifacts/poster-maker-cli-aarch64-apple-darwin
-
-      - uses: actions/upload-artifact@v7
-        with:
-          name: cli-aarch64-apple-darwin
-          path: cli-artifacts/*
-          if-no-files-found: error
-
       - uses: actions/upload-artifact@v7
         with:
           name: bundles-aarch64-apple-darwin
-          path: |
-            src-tauri/target/aarch64-apple-darwin/release/bundle/dmg/*.dmg
-            src-tauri/target/aarch64-apple-darwin/release/bundle/macos/*.app.tar.gz
+          path: src-tauri/target/aarch64-apple-darwin/release/bundle/dmg/*.dmg
           if-no-files-found: error
 
   publish:
@@ -95,6 +78,21 @@ jobs:
       - uses: actions/download-artifact@v7
         with:
           path: artifacts
+
+      - name: Delete existing release assets
+        shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          RELEASE_TAG: ${{ github.ref_type == 'tag' && github.ref_name || inputs.version }}
+        run: |
+          release_id="$(gh api "repos/${GITHUB_REPOSITORY}/releases/tags/${RELEASE_TAG}" --jq '.id' 2>/dev/null || true)"
+          if [ -n "$release_id" ]; then
+            gh api --paginate "repos/${GITHUB_REPOSITORY}/releases/${release_id}/assets" --jq '.[].id' |
+              while read -r asset_id; do
+                [ -n "$asset_id" ] && gh api -X DELETE "repos/${GITHUB_REPOSITORY}/releases/assets/${asset_id}"
+              done
+          fi
+
       - name: Publish release
         uses: softprops/action-gh-release@v3
         with:
@@ -146,25 +144,10 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
-          args: --bundles "nsis,msi"
-
-      - name: Build CLI
-        run: cargo build --manifest-path src-tauri/Cargo.toml --release --bin poster-maker-cli
-
-      - name: Stage CLI artifact
-        shell: bash
-        run: |
-          mkdir -p cli-artifacts
-          cp src-tauri/target/release/poster-maker-cli.exe cli-artifacts/poster-maker-cli-x86_64-pc-windows-msvc.exe
-
-      - uses: actions/upload-artifact@v7
-        with:
-          name: cli-x86_64-pc-windows-msvc
-          path: cli-artifacts/*
-          if-no-files-found: error
+          args: --bundles nsis
 
       - uses: actions/upload-artifact@v7
         with:
           name: bundles-x86_64-pc-windows-msvc
-          path: src-tauri/target/release/bundle/**/*
+          path: src-tauri/target/release/bundle/nsis/*setup.exe
           if-no-files-found: error
