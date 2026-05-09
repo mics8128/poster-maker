@@ -136,8 +136,8 @@ fn draw_guides(out: &mut String, dest: Rect, clip: Rect, base: Rect, col: u32, r
     let top_y = dest.y0 + (base.y0 - clip.y0) * dest.height() / clip.height();
     let bottom_y = dest.y0 + (base.y1 - clip.y0) * dest.height() / clip.height();
 
-    if col > 0 { draw_crop_line_with_boxes(out, (left_x, dest.y0), (left_x, dest.y1), page_h); }
-    if row > 0 { draw_crop_line_with_boxes(out, (dest.x0, top_y), (dest.x1, top_y), page_h); }
+    if col > 0 { draw_crop_line_with_boxes(out, (left_x, dest.y0), (left_x, dest.y1), (-1.0, 0.0), page_h); }
+    if row > 0 { draw_crop_line_with_boxes(out, (dest.x0, top_y), (dest.x1, top_y), (0.0, -1.0), page_h); }
     if col < cols - 1 { draw_end_boxes(out, (right_x, dest.y0), (right_x, dest.y1), page_h); }
     if row < rows - 1 { draw_end_boxes(out, (dest.x0, bottom_y), (dest.x1, bottom_y), page_h); }
 }
@@ -149,19 +149,29 @@ fn line_outer_points(a: (f64, f64), b: (f64, f64), offset: f64) -> ((f64, f64), 
     ((a.0 - dx / len * offset, a.1 - dy / len * offset), (b.0 + dx / len * offset, b.1 + dy / len * offset))
 }
 
-fn draw_crop_line_with_boxes(out: &mut String, a: (f64, f64), b: (f64, f64), page_h: f64) {
+fn draw_crop_line_with_boxes(out: &mut String, a: (f64, f64), b: (f64, f64), waste_dir: (f64, f64), page_h: f64) {
     // X boxes are alignment anchors: keep them exactly on the trim endpoints.
-    // Only the crop line itself extends beyond the boxes, so the printed line can be cut off.
-    let (line_a, line_b) = line_outer_points(a, b, 8.0);
+    // Do NOT extend along the line direction; extend short bleed ticks toward
+    // the waste/trim-off side only. That makes the mark removable by the cut
+    // without moving the alignment target.
+    draw_contrast_line(out, a, b, page_h);
+    let bleed = 8.0;
+    let a_out = (a.0 + waste_dir.0 * bleed, a.1 + waste_dir.1 * bleed);
+    let b_out = (b.0 + waste_dir.0 * bleed, b.1 + waste_dir.1 * bleed);
+    draw_contrast_line(out, a, a_out, page_h);
+    draw_contrast_line(out, b, b_out, page_h);
+    draw_end_boxes(out, a, b, page_h);
+}
+
+fn draw_contrast_line(out: &mut String, a: (f64, f64), b: (f64, f64), page_h: f64) {
     // White underlay keeps crop mark visible on red/dark image areas.
     set_stroke(out, 1.0, 1.0, 1.0, 2.4, Some("[7 3] 0"));
-    draw_line(out, line_a, line_b, page_h);
+    draw_line(out, a, b, page_h);
     // Cyan + black is more robust than pure red when source artwork contains red.
     set_stroke(out, 0.0, 0.75, 0.95, 1.05, Some("[7 3] 0"));
-    draw_line(out, line_a, line_b, page_h);
+    draw_line(out, a, b, page_h);
     set_stroke(out, 0.0, 0.0, 0.0, 0.35, Some("[1 8] 0"));
-    draw_line(out, line_a, line_b, page_h);
-    draw_end_boxes(out, a, b, page_h);
+    draw_line(out, a, b, page_h);
 }
 
 fn draw_end_boxes(out: &mut String, a: (f64, f64), b: (f64, f64), page_h: f64) {
