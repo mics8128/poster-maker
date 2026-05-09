@@ -150,8 +150,9 @@ fn line_outer_points(a: (f64, f64), b: (f64, f64), offset: f64) -> ((f64, f64), 
 }
 
 fn draw_crop_line_with_boxes(out: &mut String, a: (f64, f64), b: (f64, f64), page_h: f64) {
-    // Crop line extends slightly beyond marker centers, so the marked line can be cut off.
-    let (line_a, line_b) = line_outer_points(a, b, 17.0);
+    // X boxes are alignment anchors: keep them exactly on the trim endpoints.
+    // Only the crop line itself extends beyond the boxes, so the printed line can be cut off.
+    let (line_a, line_b) = line_outer_points(a, b, 8.0);
     // White underlay keeps crop mark visible on red/dark image areas.
     set_stroke(out, 1.0, 1.0, 1.0, 2.4, Some("[7 3] 0"));
     draw_line(out, line_a, line_b, page_h);
@@ -164,9 +165,9 @@ fn draw_crop_line_with_boxes(out: &mut String, a: (f64, f64), b: (f64, f64), pag
 }
 
 fn draw_end_boxes(out: &mut String, a: (f64, f64), b: (f64, f64), page_h: f64) {
-    let (s, e) = line_outer_points(a, b, 12.0);
-    draw_x_box(out, s, 9.0, page_h);
-    draw_x_box(out, e, 9.0, page_h);
+    // Do not offset boxes. They are the physical alignment targets.
+    draw_x_box(out, a, 9.0, page_h);
+    draw_x_box(out, b, 9.0, page_h);
 }
 
 fn set_stroke(out: &mut String, r: f64, g: f64, b: f64, width: f64, dash: Option<&str>) {
