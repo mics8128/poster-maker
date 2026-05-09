@@ -5,6 +5,8 @@ use serde::{Deserialize, Serialize};
 const A4_WIDTH_PT: f64 = 595.2755905512;
 const A4_HEIGHT_PT: f64 = 841.8897637795;
 const MM_TO_PT: f64 = 72.0 / 25.4;
+const MARKER_SIZE_PT: f64 = 12.0;
+const MARKER_GAP_PT: f64 = 2.0;
 
 #[derive(Debug, Clone, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -71,7 +73,7 @@ pub fn poster_canvas_size(page_w: f64, page_h: f64, cols: u32, rows: u32, margin
 
 fn candidate(src_w_pt: f64, src_h_pt: f64, cols: u32, rows: u32, landscape: bool, options: &PosterOptions) -> Result<PreviewInfo, String> {
     let (page_w, page_h) = page_size(landscape);
-    let margin = mm(options.margin_mm);
+    let margin = reserved_margin(options);
     let overlap = mm(options.overlap_mm);
     let (base_w, base_h, canvas_w, canvas_h) = poster_canvas_size(page_w, page_h, cols, rows, margin, overlap)?;
     let scale = (canvas_w / src_w_pt).min(canvas_h / src_h_pt);
@@ -132,6 +134,11 @@ pub fn resolve_layout(src_w_px: u32, src_h_px: u32, options: &PosterOptions) -> 
         }
     }
     best.ok_or_else(|| "No valid layout".into())
+}
+
+fn reserved_margin(options: &PosterOptions) -> f64 {
+    let marker_clearance = if options.draw_cut_guides { MARKER_SIZE_PT + MARKER_GAP_PT } else { 0.0 };
+    mm(options.margin_mm).max(marker_clearance)
 }
 
 #[cfg(test)]
