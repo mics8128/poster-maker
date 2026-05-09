@@ -217,21 +217,14 @@ fn draw_contrast_line(out: &mut String, a: Point, b: Point, page_h: f64) {
     draw_line(out, a, b, page_h);
 }
 
-fn draw_outer_marks(out: &mut String, dest: Rect, page_w: f64, page_h: f64) {
-    set_stroke(out, 0.65, 0.65, 0.65, 0.35, Some("[3 3] 0"));
-    let gap = 2.0;
-    for (a, b) in [
-        (Point { x: 0.0, y: dest.y0 }, Point { x: dest.x0 - gap, y: dest.y0 }),
-        (Point { x: dest.x0, y: 0.0 }, Point { x: dest.x0, y: dest.y0 - gap }),
-        (Point { x: dest.x1 + gap, y: dest.y0 }, Point { x: page_w, y: dest.y0 }),
-        (Point { x: dest.x1, y: 0.0 }, Point { x: dest.x1, y: dest.y0 - gap }),
-        (Point { x: 0.0, y: dest.y1 }, Point { x: dest.x0 - gap, y: dest.y1 }),
-        (Point { x: dest.x0, y: dest.y1 + gap }, Point { x: dest.x0, y: page_h }),
-        (Point { x: dest.x1 + gap, y: dest.y1 }, Point { x: page_w, y: dest.y1 }),
-        (Point { x: dest.x1, y: dest.y1 + gap }, Point { x: dest.x1, y: page_h }),
-    ] {
-        draw_line(out, a, b, page_h);
-    }
+fn draw_outer_marks(out: &mut String, dest: Rect, _page_w: f64, page_h: f64) {
+    out.push_str("q\n/GS50 gs\n");
+    set_stroke(out, 0.0, 0.0, 0.0, 0.5, None);
+    draw_line(out, Point { x: dest.x0, y: dest.y0 }, Point { x: dest.x1, y: dest.y0 }, page_h);
+    draw_line(out, Point { x: dest.x1, y: dest.y0 }, Point { x: dest.x1, y: dest.y1 }, page_h);
+    draw_line(out, Point { x: dest.x1, y: dest.y1 }, Point { x: dest.x0, y: dest.y1 }, page_h);
+    draw_line(out, Point { x: dest.x0, y: dest.y1 }, Point { x: dest.x0, y: dest.y0 }, page_h);
+    out.push_str("Q\n");
 }
 
 fn set_stroke(out: &mut String, r: f64, g: f64, b: f64, width: f64, dash: Option<&str>) {
@@ -292,7 +285,7 @@ fn write_pdf(page_w: f64, page_h: f64, pages: &[PageChunk]) -> Vec<u8> {
         let content_obj = page_obj + 1;
         let image_obj = page_obj + 2;
         objects.push(format!(
-            "<< /Type /Page /Parent {} 0 R /MediaBox [0 0 {:.3} {:.3}] /Resources << /XObject << /Im0 {} 0 R >> >> /Contents {} 0 R >>",
+            "<< /Type /Page /Parent {} 0 R /MediaBox [0 0 {:.3} {:.3}] /Resources << /XObject << /Im0 {} 0 R >> /ExtGState << /GS50 << /Type /ExtGState /CA 0.5 /ca 0.5 >> >> >> /Contents {} 0 R >>",
             pages_obj, page_w, page_h, image_obj, content_obj
         ).into_bytes());
         objects.push(stream_object(p.content.as_bytes()));
