@@ -1,6 +1,6 @@
 [package]
 name = "poster-maker"
-version = "0.2.0-alpha.1"
+version = "0.2.0-alpha.2"
 description = "Image poster tiling tool"
 authors = ["mics"]
 edition = "2021"
@@ -20,9 +20,6 @@ tauri-build = { version = "2", features = [] }
 [dependencies]
 tauri = { version = "2", features = ["protocol-asset"] }
 tauri-plugin-dialog = "2"
-tauri-plugin-opener = "2"
 serde = { version = "1", features = ["derive"] }
-serde_json = "1"
 thiserror = "2"
 image = { version = "0.25", default-features = false, features = ["png", "jpeg", "webp", "bmp", "tiff"] }
-printpdf = { version = "0.8", default-features = false, features = ["png", "jpeg"] }

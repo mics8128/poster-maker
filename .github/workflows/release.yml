@@ -41,6 +41,14 @@ jobs:
       - name: Install frontend deps
         run: pnpm install --frozen-lockfile
 
+      - name: Sync release version
+        if: github.ref_type == 'tag'
+        shell: bash
+        run: |
+          node -e "let p=require('./package.json'); p.version='${GITHUB_REF_NAME#v}'; require('fs').writeFileSync('package.json', JSON.stringify(p, null, 2) + '\n')"
+          pnpm sync-version
+          cargo update --manifest-path src-tauri/Cargo.toml -p poster-maker
+
       - name: Run tests
         run: cargo test --manifest-path src-tauri/Cargo.toml --target aarch64-apple-darwin
 

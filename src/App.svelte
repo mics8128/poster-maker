@@ -2,7 +2,9 @@
   import { convertFileSrc, invoke } from '@tauri-apps/api/core';
   import { confirm, open } from '@tauri-apps/plugin-dialog';
 
-  const version = '0.2.0-alpha.1';
+  import pkg from '../package.json';
+
+  const version = pkg.version;
 
 
   type PosterOptions = {

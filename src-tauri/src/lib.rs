@@ -102,7 +102,6 @@ fn generate_poster(input: String, output_name: String, overwrite: bool, options:
 pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_dialog::init())
-        .plugin(tauri_plugin_opener::init())
         .invoke_handler(tauri::generate_handler![inspect_image, preview_geometry, output_exists, generate_poster])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
