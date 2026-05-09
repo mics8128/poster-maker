@@ -144,15 +144,18 @@ fn draw_guides(out: &mut String, dest: Rect, clip: Rect, base: Rect, col: u32, r
 
 fn draw_crop_line_with_boxes(out: &mut String, a: (f64, f64), b: (f64, f64), waste_dir: (f64, f64), page_h: f64) {
     // X boxes are alignment anchors: keep them exactly on the trim endpoints.
-    // Do NOT extend along the line direction; extend short bleed ticks toward
-    // the waste/trim-off side only. That makes the mark removable by the cut
-    // without moving the alignment target.
-    draw_contrast_line(out, a, b, page_h);
+    // Move only the crop line slightly toward the waste/outer side.
+    let outset = 2.0;
     let bleed = 8.0;
+    let line_a = (a.0 + waste_dir.0 * outset, a.1 + waste_dir.1 * outset);
+    let line_b = (b.0 + waste_dir.0 * outset, b.1 + waste_dir.1 * outset);
+    draw_contrast_line(out, line_a, line_b, page_h);
+
+    // Short extra ticks continue farther into the waste side so the mark can be cut off.
     let a_out = (a.0 + waste_dir.0 * bleed, a.1 + waste_dir.1 * bleed);
     let b_out = (b.0 + waste_dir.0 * bleed, b.1 + waste_dir.1 * bleed);
-    draw_contrast_line(out, a, a_out, page_h);
-    draw_contrast_line(out, b, b_out, page_h);
+    draw_contrast_line(out, line_a, a_out, page_h);
+    draw_contrast_line(out, line_b, b_out, page_h);
     draw_end_boxes(out, a, b, page_h);
 }
 
