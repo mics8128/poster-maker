@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { invoke } from '@tauri-apps/api/core';
+  import { convertFileSrc, invoke } from '@tauri-apps/api/core';
   import { confirm, open } from '@tauri-apps/plugin-dialog';
 
   const version = '0.2.0-alpha.1';
@@ -46,6 +46,7 @@
   let busy = false;
 
   $: options = { cols, rows, overlapMm, marginMm, drawOuterMarks: true, drawCutGuides: true } satisfies PosterOptions;
+  $: previewImageSrc = inputPath ? convertFileSrc(inputPath) : '';
   $: if (inputPath) refreshPreview(options, inputPath);
 
   let customCols = 3;
@@ -176,7 +177,7 @@
       topY: dest.y0 + (base.y0 - clip.y0) * sy,
       bottomY: dest.y0 + (base.y1 - clip.y0) * sy,
     };
-    return { dest, guides };
+    return { clip, dest, guides };
   }
 
   function markerCenters(a: { x: number; y: number }, b: { x: number; y: number }) {
@@ -257,7 +258,9 @@
             {#each Array(preview.cols) as _, c}
               {@const tile = pageTile(preview, r, c)}
               <rect x={c * preview.pageWidthPt} y={r * preview.pageHeightPt} width={preview.pageWidthPt} height={preview.pageHeightPt} fill="white" stroke="#111" stroke-width="1.2" />
-              <rect x={tile.dest.x0} y={tile.dest.y0} width={tile.dest.x1 - tile.dest.x0} height={tile.dest.y1 - tile.dest.y0} fill="#e9ecef" />
+              <svg x={tile.dest.x0} y={tile.dest.y0} width={tile.dest.x1 - tile.dest.x0} height={tile.dest.y1 - tile.dest.y0} viewBox={`${tile.clip.x0} ${tile.clip.y0} ${tile.clip.x1 - tile.clip.x0} ${tile.clip.y1 - tile.clip.y0}`} preserveAspectRatio="none">
+                <image href={previewImageSrc} x={imageCanvas(preview).x} y={imageCanvas(preview).y} width={preview.imageWidthPt} height={preview.imageHeightPt} preserveAspectRatio="none" />
+              </svg>
               <line x1={c * preview.pageWidthPt} x2={(c + 1) * preview.pageWidthPt} y1={tile.dest.y0} y2={tile.dest.y0} stroke="black" stroke-opacity="0.5" stroke-dasharray="3 3" stroke-width="0.5" />
               <line x1={tile.dest.x1} x2={tile.dest.x1} y1={r * preview.pageHeightPt} y2={(r + 1) * preview.pageHeightPt} stroke="black" stroke-opacity="0.5" stroke-dasharray="3 3" stroke-width="0.5" />
               <line x1={(c + 1) * preview.pageWidthPt} x2={c * preview.pageWidthPt} y1={tile.dest.y1} y2={tile.dest.y1} stroke="black" stroke-opacity="0.5" stroke-dasharray="3 3" stroke-width="0.5" />
