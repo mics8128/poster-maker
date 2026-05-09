@@ -3,6 +3,6 @@ __pycache__/
 .venv/
 build/
 dist/
-*.spec
+# Keep PyInstaller specs tracked; ignore generated build/dist instead.
 .DS_Store
 .pytest_cache/

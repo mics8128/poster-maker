@@ -24,6 +24,7 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
+from . import __version__
 from .core import PosterOptions, generate_poster_pdf, load_source_as_pdf, mm, page_size, resolve_layout
 
 
@@ -52,7 +53,7 @@ class Worker(QThread):
 class MainWindow(QMainWindow):
     def __init__(self) -> None:
         super().__init__()
-        self.setWindowTitle("Poster Maker")
+        self.setWindowTitle(f"Poster Maker v{__version__}")
         self.resize(980, 700)
         self.worker: Worker | None = None
 
@@ -95,6 +96,9 @@ class MainWindow(QMainWindow):
         self.advanced_box.setChecked(False)
         self.status_label = QLabel("選 PDF 或圖片，按產生。預設使用最佳擺放與建議參數。")
         self.status_label.setWordWrap(True)
+        self.version_label = QLabel(f"Poster Maker v{__version__}")
+        self.version_label.setAlignment(Qt.AlignRight)
+        self.version_label.setStyleSheet("color:#777; font-size:11px;")
         self.preview_label = QLabel("預覽：請先選來源")
         self.preview_label.setAlignment(Qt.AlignCenter)
         self.preview_label.setSizePolicy(self.preview_label.sizePolicy().horizontalPolicy(), self.preview_label.sizePolicy().verticalPolicy())
@@ -164,6 +168,7 @@ class MainWindow(QMainWindow):
         left_layout.addWidget(self.generate_button)
         left_layout.addWidget(self.status_label)
         left_layout.addStretch(1)
+        left_layout.addWidget(self.version_label)
 
         layout = QHBoxLayout()
         left = QWidget()
@@ -292,7 +297,7 @@ class MainWindow(QMainWindow):
             image_h_cm = pt_to_cm(fitted_h_pt)
             self.status_label.setText(
                 f"最佳輸出：{layout.cols}x{layout.rows} A4，{'橫向' if layout.landscape else '直向'}\n"
-                f"成品圖面：約 {image_w_cm:.1f} × {image_h_cm:.1f} cm；"
+                f"成品圖面：約 {image_w_cm:.1f} × {image_h_cm:.1f} cm\n"
                 f"A4總外框：約 {paper_w_cm:.1f} × {paper_h_cm:.1f} cm\n"
                 f"重疊 {options.overlap_mm:g}mm，邊界 {options.margin_mm:g}mm"
             )
