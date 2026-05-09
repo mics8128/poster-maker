@@ -66,8 +66,8 @@ app = BUNDLE(
     info_plist={
         "CFBundleDisplayName": "Poster Maker",
         "CFBundleName": "Poster Maker",
-        "CFBundleShortVersionString": "0.1.0",
-        "CFBundleVersion": "0.1.0",
+        "CFBundleShortVersionString": "0.1.1",
+        "CFBundleVersion": "0.1.1",
         "NSHighResolutionCapable": True,
     },
 )

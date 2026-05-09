@@ -2,14 +2,14 @@
 
 Poster Maker 是一個跨平台海報分割工具。把一張圖片或單頁 PDF 切成多張 A4，列印後可剪裁、重疊、拼貼成大海報。
 
-目前版本：**v0.1.0**
+目前版本：**v0.1.1**
 
 ## 下載
 
 到 GitHub Releases 下載：
 
-- macOS：`PosterMaker-0.1.0-macos.dmg`
-- Windows：`PosterMaker-0.1.0-windows-installer.exe` 或 `PosterMaker-0.1.0-windows.zip`
+- macOS：`PosterMaker-0.1.1-macos.dmg`
+- Windows：`PosterMaker-0.1.1-windows-installer.exe` 或 `PosterMaker-0.1.1-windows.zip`
 
 > macOS 第一次開啟若被 Gatekeeper 擋下，請在 Finder 對 App 按右鍵 → Open / 打開。
 
@@ -100,27 +100,27 @@ poster-maker
 macOS DMG：
 
 ```bash
-VERSION=0.1.0 bash scripts/build_macos_dmg.sh
+VERSION=0.1.1 bash scripts/build_macos_dmg.sh
 ```
 
 輸出：
 
 ```text
-release/PosterMaker-0.1.0-macos.dmg
+release/PosterMaker-0.1.1-macos.dmg
 ```
 
 Windows ZIP / Installer：
 
 ```powershell
-$env:VERSION="0.1.0"
+$env:VERSION="0.1.1"
 .\scripts\build_windows.ps1
 ```
 
 輸出：
 
 ```text
-release/PosterMaker-0.1.0-windows.zip
-release/PosterMaker-0.1.0-windows-installer.exe
+release/PosterMaker-0.1.1-windows.zip
+release/PosterMaker-0.1.1-windows-installer.exe
 ```
 
 Installer 需要 Inno Setup；若沒有 Inno Setup，仍會產生 ZIP。
@@ -129,20 +129,20 @@ Installer 需要 Inno Setup；若沒有 Inno Setup，仍會產生 ZIP。
 
 此專案使用 GitHub Actions 在 tag 發布時自動打包 macOS 與 Windows。
 
-發布 v0.1.0：
+發布 v0.1.1：
 
 ```bash
-git tag v0.1.0
+git tag v0.1.1
 git push origin master --tags
 ```
 
 CI 會產生並上傳：
 
-- `PosterMaker-0.1.0-macos.dmg`
-- `PosterMaker-0.1.0-windows.zip`
-- `PosterMaker-0.1.0-windows-installer.exe`
+- `PosterMaker-0.1.1-macos.dmg`
+- `PosterMaker-0.1.1-windows.zip`
+- `PosterMaker-0.1.1-windows-installer.exe`
 
-也可在 GitHub Actions 手動執行 `Release` workflow，輸入版本 `v0.1.0`。
+也可在 GitHub Actions 手動執行 `Release` workflow，輸入版本 `v0.1.1`。
 
 ## 技術
 

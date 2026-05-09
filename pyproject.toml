@@ -1,6 +1,6 @@
 [project]
 name = "poster-maker"
-version = "0.1.0"
+version = "0.1.1"
 description = "Cross-platform poster tiling tool for PDF/images"
 requires-python = ">=3.10"
 dependencies = [
