@@ -10,7 +10,7 @@
     "preview": "vite preview",
     "tauri": "node scripts/tauri.mjs",
     "cargo": "node scripts/cargo.mjs",
-    "clean": "rm -rf dist src-tauri/target ~/Library/Caches/poster-maker"
+    "clean": "rm -rf dist src-tauri/target /tmp/poster-maker-cargo-target ~/Library/Caches/poster-maker"
   },
   "dependencies": {
     "@tauri-apps/api": "^2.9.0",

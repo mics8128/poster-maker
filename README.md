@@ -39,6 +39,13 @@ pnpm install
 pnpm tauri dev
 ```
 
+一般 build/test 會使用暫存 Cargo target，結束後自動刪除，避免專案資料夾或 user cache 越長越大。若要保留編譯 cache 加速開發：
+
+```bash
+POSTER_MAKER_KEEP_TARGET=1 pnpm cargo test --manifest-path src-tauri/Cargo.toml
+POSTER_MAKER_KEEP_TARGET=1 pnpm tauri build --target aarch64-apple-darwin
+```
+
 如果 dev server 卡住：
 
 ```bash
