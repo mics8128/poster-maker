@@ -1,7 +1,8 @@
 use crate::layout::{mm, PosterOptions, PreviewInfo};
 use image::{codecs::jpeg::JpegEncoder, DynamicImage};
 
-const MARKER_SIZE_PT: f64 = 9.0;
+const MARKER_SIZE_PT: f64 = 12.0;
+const MARKER_GAP_PT: f64 = 2.0;
 
 #[derive(Debug, Clone, Copy)]
 struct Point {
@@ -173,30 +174,40 @@ fn guide_geometry(tile: TileGeometry) -> GuideGeometry {
 
 fn draw_cut_and_alignment_guides(out: &mut String, dest: Rect, guides: GuideGeometry, row: u32, col: u32, preview: &PreviewInfo, page_h: f64) {
     if col > 0 {
-        draw_crop_line_with_boxes(out, Point { x: guides.left_x, y: dest.y0 }, Point { x: guides.left_x, y: dest.y1 }, Point { x: -1.0, y: 0.0 }, page_h);
+        draw_crop_line_with_boxes(out, Point { x: guides.left_x, y: dest.y0 }, Point { x: guides.left_x, y: dest.y1 }, page_h);
     }
     if row > 0 {
-        draw_crop_line_with_boxes(out, Point { x: dest.x0, y: guides.top_y }, Point { x: dest.x1, y: guides.top_y }, Point { x: 0.0, y: -1.0 }, page_h);
+        draw_crop_line_with_boxes(out, Point { x: dest.x0, y: guides.top_y }, Point { x: dest.x1, y: guides.top_y }, page_h);
     }
     if col < preview.cols - 1 {
-        draw_marker_boxes(out, Point { x: guides.right_x, y: dest.y0 }, Point { x: guides.right_x, y: dest.y1 }, Point { x: 1.0, y: 0.0 }, page_h);
+        draw_marker_boxes(out, Point { x: guides.right_x, y: dest.y0 }, Point { x: guides.right_x, y: dest.y1 }, page_h);
     }
     if row < preview.rows - 1 {
-        draw_marker_boxes(out, Point { x: dest.x0, y: guides.bottom_y }, Point { x: dest.x1, y: guides.bottom_y }, Point { x: 0.0, y: 1.0 }, page_h);
+        draw_marker_boxes(out, Point { x: dest.x0, y: guides.bottom_y }, Point { x: dest.x1, y: guides.bottom_y }, page_h);
     }
 }
 
-fn draw_crop_line_with_boxes(out: &mut String, a: Point, b: Point, marker_dir: Point, page_h: f64) {
+fn draw_crop_line_with_boxes(out: &mut String, a: Point, b: Point, page_h: f64) {
     draw_contrast_line(out, a, b, page_h);
-    draw_marker_boxes(out, a, b, marker_dir, page_h);
+    draw_marker_boxes(out, a, b, page_h);
 }
 
-fn draw_marker_boxes(out: &mut String, a: Point, b: Point, marker_dir: Point, page_h: f64) {
-    let offset = 2.0;
-    let a = Point { x: a.x + marker_dir.x * offset, y: a.y + marker_dir.y * offset };
-    let b = Point { x: b.x + marker_dir.x * offset, y: b.y + marker_dir.y * offset };
-    draw_x_box(out, a, MARKER_SIZE_PT, page_h);
-    draw_x_box(out, b, MARKER_SIZE_PT, page_h);
+fn draw_marker_boxes(out: &mut String, a: Point, b: Point, page_h: f64) {
+    // Markers sit outside the image at the line ends. For a vertical left trim
+    // line this means top marker moves up and bottom marker moves down, not left/right.
+    let offset = MARKER_SIZE_PT / 2.0 + MARKER_GAP_PT;
+    let (a_dir, b_dir) = endpoint_dirs(a, b);
+    draw_x_box(out, Point { x: a.x + a_dir.x * offset, y: a.y + a_dir.y * offset }, MARKER_SIZE_PT, page_h);
+    draw_x_box(out, Point { x: b.x + b_dir.x * offset, y: b.y + b_dir.y * offset }, MARKER_SIZE_PT, page_h);
+}
+
+fn endpoint_dirs(a: Point, b: Point) -> (Point, Point) {
+    let dx = b.x - a.x;
+    let dy = b.y - a.y;
+    let len = (dx * dx + dy * dy).sqrt().max(1.0);
+    let ux = dx / len;
+    let uy = dy / len;
+    (Point { x: -ux, y: -uy }, Point { x: ux, y: uy })
 }
 
 fn draw_contrast_line(out: &mut String, a: Point, b: Point, page_h: f64) {
@@ -250,9 +261,7 @@ fn pdf_y(y_top: f64, h: f64, page_h: f64) -> f64 {
 
 fn draw_x_box(out: &mut String, center: Point, size: f64, page_h: f64) {
     let r = Rect { x0: center.x - size / 2.0, y0: center.y - size / 2.0, x1: center.x + size / 2.0, y1: center.y + size / 2.0 };
-    draw_x_box_path(out, r, page_h, 1.0, 1.0, 1.0, 2.2);
-    draw_x_box_path(out, r, page_h, 0.0, 0.75, 0.95, 0.8);
-    draw_x_box_path(out, r, page_h, 0.0, 0.0, 0.0, 0.25);
+    draw_x_box_path(out, r, page_h, 0.0, 0.0, 0.0, 1.1);
 }
 
 fn draw_x_box_path(out: &mut String, r: Rect, page_h: f64, red: f64, green: f64, blue: f64, width: f64) {
