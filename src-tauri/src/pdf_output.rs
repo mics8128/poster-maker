@@ -1,21 +1,24 @@
 use crate::layout::{mm, PosterOptions, PreviewInfo};
 use image::{codecs::jpeg::JpegEncoder, DynamicImage};
+use serde::Serialize;
 
 const MARKER_SIZE_PT: f64 = 12.0;
 const MARKER_GAP_PT: f64 = 2.0;
 
-#[derive(Debug, Clone, Copy)]
-struct Point {
-    x: f64,
-    y: f64,
+#[derive(Debug, Clone, Copy, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct Point {
+    pub x: f64,
+    pub y: f64,
 }
 
-#[derive(Debug, Clone, Copy)]
-struct Rect {
-    x0: f64,
-    y0: f64,
-    x1: f64,
-    y1: f64,
+#[derive(Debug, Clone, Copy, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct Rect {
+    pub x0: f64,
+    pub y0: f64,
+    pub x1: f64,
+    pub y1: f64,
 }
 
 impl Rect {
@@ -30,12 +33,47 @@ struct TileGeometry {
     dest_page: Rect,
 }
 
-#[derive(Debug, Clone, Copy)]
-struct GuideGeometry {
-    left_x: f64,
-    right_x: f64,
-    top_y: f64,
-    bottom_y: f64,
+#[derive(Debug, Clone, Copy, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct GuideGeometry {
+    pub left_x: f64,
+    pub right_x: f64,
+    pub top_y: f64,
+    pub bottom_y: f64,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct LineGeometry {
+    pub a: Point,
+    pub b: Point,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct MarkerGeometry {
+    pub center: Point,
+    pub size: f64,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PreviewPageGeometry {
+    pub row: u32,
+    pub col: u32,
+    pub clip_canvas: Rect,
+    pub dest_page: Rect,
+    pub guides: GuideGeometry,
+    pub outer_lines: Vec<LineGeometry>,
+    pub cut_lines: Vec<LineGeometry>,
+    pub markers: Vec<MarkerGeometry>,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PreviewGeometry {
+    pub image_canvas: Rect,
+    pub pages: Vec<PreviewPageGeometry>,
 }
 
 struct PageChunk {
@@ -52,15 +90,16 @@ pub fn generate(image: &DynamicImage, output: &str, options: &PosterOptions, pre
 }
 
 fn build_pages(image: &DynamicImage, options: &PosterOptions, preview: &PreviewInfo) -> Result<Vec<PageChunk>, String> {
-    let image_canvas = image_fit_canvas(image, preview);
+    let image_canvas = image_fit_canvas_size(image.width() as f64, image.height() as f64, preview);
     let mut pages = Vec::new();
 
     for row in 0..preview.rows {
         for col in 0..preview.cols {
             let tile = tile_geometry(row, col, preview, options, image_canvas)?;
+            let page = page_geometry(tile, row, col, options, preview);
             let (sx, sy, sw, sh) = canvas_to_source_crop(tile.clip_canvas, image_canvas, image.width(), image.height());
             let jpeg = encode_tile_jpeg(image, sx, sy, sw, sh)?;
-            let content = build_page_content(tile, row, col, options, preview);
+            let content = build_page_content(&page, preview);
             pages.push(PageChunk { content, image: jpeg, image_w: sw, image_h: sh });
         }
     }
@@ -69,14 +108,68 @@ fn build_pages(image: &DynamicImage, options: &PosterOptions, preview: &PreviewI
 }
 
 // -----------------------------------------------------------------------------
-// Tile/grid geometry. These functions decide where each image tile goes.
-// They do not draw guide lines or marker boxes.
+// Shared tile/guide geometry. PDF output and GUI preview both use this data.
 // -----------------------------------------------------------------------------
 
-fn image_fit_canvas(image: &DynamicImage, preview: &PreviewInfo) -> Rect {
+pub fn preview_geometry_for_image_size(image_w: u32, image_h: u32, options: &PosterOptions, preview: &PreviewInfo) -> Result<PreviewGeometry, String> {
+    let image_canvas = image_fit_canvas_size(image_w as f64, image_h as f64, preview);
+    let mut pages = Vec::new();
+    for row in 0..preview.rows {
+        for col in 0..preview.cols {
+            let tile = tile_geometry(row, col, preview, options, image_canvas)?;
+            pages.push(page_geometry(tile, row, col, options, preview));
+        }
+    }
+    Ok(PreviewGeometry { image_canvas, pages })
+}
+
+fn page_geometry(tile: TileGeometry, row: u32, col: u32, options: &PosterOptions, preview: &PreviewInfo) -> PreviewPageGeometry {
+    let guides = guide_geometry(tile);
+    let mut outer_lines = Vec::new();
+    let mut cut_lines = Vec::new();
+    let mut markers = Vec::new();
+
+    if options.draw_outer_marks {
+        outer_lines.extend(outer_mark_lines(tile.dest_page, preview.page_width_pt, preview.page_height_pt));
+    }
+
+    if options.draw_cut_guides {
+        if col > 0 {
+            let line = LineGeometry { a: Point { x: guides.left_x, y: tile.dest_page.y0 }, b: Point { x: guides.left_x, y: tile.dest_page.y1 } };
+            markers.extend(line_markers(&line));
+            cut_lines.push(line);
+        }
+        if row > 0 {
+            let line = LineGeometry { a: Point { x: tile.dest_page.x0, y: guides.top_y }, b: Point { x: tile.dest_page.x1, y: guides.top_y } };
+            markers.extend(line_markers(&line));
+            cut_lines.push(line);
+        }
+        if col < preview.cols - 1 {
+            let line = LineGeometry { a: Point { x: guides.right_x, y: tile.dest_page.y0 }, b: Point { x: guides.right_x, y: tile.dest_page.y1 } };
+            markers.extend(line_markers(&line));
+        }
+        if row < preview.rows - 1 {
+            let line = LineGeometry { a: Point { x: tile.dest_page.x0, y: guides.bottom_y }, b: Point { x: tile.dest_page.x1, y: guides.bottom_y } };
+            markers.extend(line_markers(&line));
+        }
+    }
+
+    PreviewPageGeometry {
+        row,
+        col,
+        clip_canvas: tile.clip_canvas,
+        dest_page: tile.dest_page,
+        guides,
+        outer_lines,
+        cut_lines,
+        markers,
+    }
+}
+
+fn image_fit_canvas_size(image_w: f64, image_h: f64, preview: &PreviewInfo) -> Rect {
     fit_rect(
-        image.width() as f64,
-        image.height() as f64,
+        image_w,
+        image_h,
         Rect { x0: 0.0, y0: 0.0, x1: preview.canvas_width_pt, y1: preview.canvas_height_pt },
     )
 }
@@ -123,6 +216,44 @@ fn fit_rect(src_w: f64, src_h: f64, canvas: Rect) -> Rect {
     Rect { x0, y0, x1: x0 + w, y1: y0 + h }
 }
 
+fn guide_geometry(tile: TileGeometry) -> GuideGeometry {
+    let sx = tile.dest_page.width() / tile.clip_canvas.width();
+    let sy = tile.dest_page.height() / tile.clip_canvas.height();
+    GuideGeometry {
+        left_x: tile.dest_page.x0 + (tile.base_canvas.x0 - tile.clip_canvas.x0) * sx,
+        right_x: tile.dest_page.x0 + (tile.base_canvas.x1 - tile.clip_canvas.x0) * sx,
+        top_y: tile.dest_page.y0 + (tile.base_canvas.y0 - tile.clip_canvas.y0) * sy,
+        bottom_y: tile.dest_page.y0 + (tile.base_canvas.y1 - tile.clip_canvas.y0) * sy,
+    }
+}
+
+fn outer_mark_lines(dest: Rect, page_w: f64, page_h: f64) -> [LineGeometry; 4] {
+    [
+        LineGeometry { a: Point { x: 0.0, y: dest.y0 }, b: Point { x: page_w, y: dest.y0 } },
+        LineGeometry { a: Point { x: dest.x1, y: 0.0 }, b: Point { x: dest.x1, y: page_h } },
+        LineGeometry { a: Point { x: page_w, y: dest.y1 }, b: Point { x: 0.0, y: dest.y1 } },
+        LineGeometry { a: Point { x: dest.x0, y: page_h }, b: Point { x: dest.x0, y: 0.0 } },
+    ]
+}
+
+fn line_markers(line: &LineGeometry) -> [MarkerGeometry; 2] {
+    let offset = MARKER_SIZE_PT / 2.0 + MARKER_GAP_PT;
+    let (a_dir, b_dir) = endpoint_dirs(line.a, line.b);
+    [
+        MarkerGeometry { center: Point { x: line.a.x + a_dir.x * offset, y: line.a.y + a_dir.y * offset }, size: MARKER_SIZE_PT },
+        MarkerGeometry { center: Point { x: line.b.x + b_dir.x * offset, y: line.b.y + b_dir.y * offset }, size: MARKER_SIZE_PT },
+    ]
+}
+
+fn endpoint_dirs(a: Point, b: Point) -> (Point, Point) {
+    let dx = b.x - a.x;
+    let dy = b.y - a.y;
+    let len = (dx * dx + dy * dy).sqrt().max(1.0);
+    let ux = dx / len;
+    let uy = dy / len;
+    (Point { x: -ux, y: -uy }, Point { x: ux, y: uy })
+}
+
 fn canvas_to_source_crop(r: Rect, fitted: Rect, img_w: u32, img_h: u32) -> (u32, u32, u32, u32) {
     let sx0 = ((r.x0 - fitted.x0) / fitted.width() * img_w as f64).floor().clamp(0.0, img_w as f64 - 1.0) as u32;
     let sy0 = ((r.y0 - fitted.y0) / fitted.height() * img_h as f64).floor().clamp(0.0, img_h as f64 - 1.0) as u32;
@@ -141,91 +272,41 @@ fn encode_tile_jpeg(image: &DynamicImage, x: u32, y: u32, w: u32, h: u32) -> Res
 }
 
 // -----------------------------------------------------------------------------
-// Page content assembly. Calls image drawing and guide drawing separately.
+// Page content assembly. Draws from shared geometry only.
 // -----------------------------------------------------------------------------
 
-fn build_page_content(tile: TileGeometry, row: u32, col: u32, options: &PosterOptions, preview: &PreviewInfo) -> String {
+fn build_page_content(page: &PreviewPageGeometry, preview: &PreviewInfo) -> String {
     let mut out = String::new();
-    draw_image(&mut out, tile.dest_page, preview.page_height_pt);
-    if options.draw_outer_marks {
-        draw_outer_marks(&mut out, tile.dest_page, preview.page_width_pt, preview.page_height_pt);
+    draw_image(&mut out, page.dest_page, preview.page_height_pt);
+    for line in &page.outer_lines {
+        draw_outer_line(&mut out, line, preview.page_height_pt);
     }
-    if options.draw_cut_guides {
-        let guides = guide_geometry(tile);
-        draw_cut_and_alignment_guides(&mut out, tile.dest_page, guides, row, col, preview, preview.page_height_pt);
+    for line in &page.cut_lines {
+        draw_contrast_line(&mut out, line, preview.page_height_pt);
+    }
+    for marker in &page.markers {
+        draw_x_box(&mut out, marker.center, marker.size, preview.page_height_pt);
     }
     out
-}
-
-fn guide_geometry(tile: TileGeometry) -> GuideGeometry {
-    let sx = tile.dest_page.width() / tile.clip_canvas.width();
-    let sy = tile.dest_page.height() / tile.clip_canvas.height();
-    GuideGeometry {
-        left_x: tile.dest_page.x0 + (tile.base_canvas.x0 - tile.clip_canvas.x0) * sx,
-        right_x: tile.dest_page.x0 + (tile.base_canvas.x1 - tile.clip_canvas.x0) * sx,
-        top_y: tile.dest_page.y0 + (tile.base_canvas.y0 - tile.clip_canvas.y0) * sy,
-        bottom_y: tile.dest_page.y0 + (tile.base_canvas.y1 - tile.clip_canvas.y0) * sy,
-    }
 }
 
 // -----------------------------------------------------------------------------
 // Guide/line drawing only. These functions must not change tile/grid geometry.
 // -----------------------------------------------------------------------------
 
-fn draw_cut_and_alignment_guides(out: &mut String, dest: Rect, guides: GuideGeometry, row: u32, col: u32, preview: &PreviewInfo, page_h: f64) {
-    if col > 0 {
-        draw_crop_line_with_boxes(out, Point { x: guides.left_x, y: dest.y0 }, Point { x: guides.left_x, y: dest.y1 }, page_h);
-    }
-    if row > 0 {
-        draw_crop_line_with_boxes(out, Point { x: dest.x0, y: guides.top_y }, Point { x: dest.x1, y: guides.top_y }, page_h);
-    }
-    if col < preview.cols - 1 {
-        draw_marker_boxes(out, Point { x: guides.right_x, y: dest.y0 }, Point { x: guides.right_x, y: dest.y1 }, page_h);
-    }
-    if row < preview.rows - 1 {
-        draw_marker_boxes(out, Point { x: dest.x0, y: guides.bottom_y }, Point { x: dest.x1, y: guides.bottom_y }, page_h);
-    }
-}
-
-fn draw_crop_line_with_boxes(out: &mut String, a: Point, b: Point, page_h: f64) {
-    draw_contrast_line(out, a, b, page_h);
-    draw_marker_boxes(out, a, b, page_h);
-}
-
-fn draw_marker_boxes(out: &mut String, a: Point, b: Point, page_h: f64) {
-    // Markers sit outside the image at the line ends. For a vertical left trim
-    // line this means top marker moves up and bottom marker moves down, not left/right.
-    let offset = MARKER_SIZE_PT / 2.0 + MARKER_GAP_PT;
-    let (a_dir, b_dir) = endpoint_dirs(a, b);
-    draw_x_box(out, Point { x: a.x + a_dir.x * offset, y: a.y + a_dir.y * offset }, MARKER_SIZE_PT, page_h);
-    draw_x_box(out, Point { x: b.x + b_dir.x * offset, y: b.y + b_dir.y * offset }, MARKER_SIZE_PT, page_h);
-}
-
-fn endpoint_dirs(a: Point, b: Point) -> (Point, Point) {
-    let dx = b.x - a.x;
-    let dy = b.y - a.y;
-    let len = (dx * dx + dy * dy).sqrt().max(1.0);
-    let ux = dx / len;
-    let uy = dy / len;
-    (Point { x: -ux, y: -uy }, Point { x: ux, y: uy })
-}
-
-fn draw_contrast_line(out: &mut String, a: Point, b: Point, page_h: f64) {
+fn draw_contrast_line(out: &mut String, line: &LineGeometry, page_h: f64) {
     set_stroke(out, 1.0, 1.0, 1.0, 2.0, Some("[7 3] 0"));
-    draw_line(out, a, b, page_h);
+    draw_line(out, line.a, line.b, page_h);
     out.push_str("q\n/GS60 gs\n");
     set_stroke(out, 0.0, 0.0, 0.0, 1.0, Some("[7 3] 0"));
-    draw_line(out, a, b, page_h);
+    draw_line(out, line.a, line.b, page_h);
     out.push_str("Q\n");
 }
 
-fn draw_outer_marks(out: &mut String, dest: Rect, page_w: f64, page_h: f64) {
+fn draw_outer_line(out: &mut String, line: &LineGeometry, page_h: f64) {
     out.push_str("q\n/GS50 gs\n");
     set_stroke(out, 0.0, 0.0, 0.0, 0.5, Some("[3 3] 0"));
-    draw_line(out, Point { x: 0.0, y: dest.y0 }, Point { x: page_w, y: dest.y0 }, page_h);
-    draw_line(out, Point { x: dest.x1, y: 0.0 }, Point { x: dest.x1, y: page_h }, page_h);
-    draw_line(out, Point { x: page_w, y: dest.y1 }, Point { x: 0.0, y: dest.y1 }, page_h);
-    draw_line(out, Point { x: dest.x0, y: page_h }, Point { x: dest.x0, y: 0.0 }, page_h);
+    draw_line(out, line.a, line.b, page_h);
     out.push_str("Q\n");
 }
 

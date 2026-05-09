@@ -9,6 +9,10 @@ edition = "2021"
 name = "poster_maker_lib"
 crate-type = ["staticlib", "cdylib", "rlib"]
 
+[[bin]]
+name = "poster-maker-cli"
+path = "src/cli.rs"
+
 [build-dependencies]
 tauri-build = { version = "2", features = [] }
 

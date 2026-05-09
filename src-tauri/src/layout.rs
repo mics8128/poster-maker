@@ -100,6 +100,10 @@ fn candidate(src_w_pt: f64, src_h_pt: f64, cols: u32, rows: u32, landscape: bool
     })
 }
 
+pub fn default_options(cols: u32, rows: u32) -> PosterOptions {
+    PosterOptions { cols, rows, overlap_mm: 5.0, margin_mm: 3.0, draw_outer_marks: true, draw_cut_guides: true }
+}
+
 pub fn resolve_layout(src_w_px: u32, src_h_px: u32, options: &PosterOptions) -> Result<PreviewInfo, String> {
     if options.cols == 0 || options.rows == 0 {
         return Err("Rows/cols must be >= 1".into());
@@ -152,7 +156,7 @@ mod tests {
     use super::*;
 
     fn opts(cols: u32, rows: u32) -> PosterOptions {
-        PosterOptions { cols, rows, overlap_mm: 5.0, margin_mm: 3.0, draw_outer_marks: true, draw_cut_guides: true }
+        default_options(cols, rows)
     }
 
     #[test]

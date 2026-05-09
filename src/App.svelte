@@ -3,9 +3,7 @@
   import { confirm, open } from '@tauri-apps/plugin-dialog';
 
   const version = '0.2.0-alpha.1';
-  const ptPerMm = 72 / 25.4;
-  const markerSizePt = 12;
-  const markerGapPt = 2;
+
 
   type PosterOptions = {
     cols: number;
@@ -16,16 +14,30 @@
     drawCutGuides: boolean;
   };
 
+  type Rect = { x0: number; y0: number; x1: number; y1: number };
+  type Point = { x: number; y: number };
+  type LineGeometry = { a: Point; b: Point };
+  type MarkerGeometry = { center: Point; size: number };
+  type PreviewPageGeometry = {
+    row: number;
+    col: number;
+    clipCanvas: Rect;
+    destPage: Rect;
+    outerLines: LineGeometry[];
+    cutLines: LineGeometry[];
+    markers: MarkerGeometry[];
+  };
+  type PreviewGeometry = {
+    imageCanvas: Rect;
+    pages: PreviewPageGeometry[];
+  };
+
   type PreviewInfo = {
     cols: number;
     rows: number;
     landscape: boolean;
     pageWidthPt: number;
     pageHeightPt: number;
-    baseTileWidthPt: number;
-    baseTileHeightPt: number;
-    canvasWidthPt: number;
-    canvasHeightPt: number;
     imageWidthPt: number;
     imageHeightPt: number;
     imageWidthCm: number;
@@ -42,6 +54,7 @@
   let overlapMm = 5;
   let marginMm = 3;
   let preview: PreviewInfo | null = null;
+  let previewGeometry: PreviewGeometry | null = null;
   let status = '選圖片，按產生。';
   let busy = false;
 
@@ -99,12 +112,17 @@
   async function refreshPreview(opts: PosterOptions, path: string) {
     const seq = ++previewSeq;
     try {
-      const result = await invoke<PreviewInfo>('inspect_image', { path, options: opts });
+      const [result, geometry] = await Promise.all([
+        invoke<PreviewInfo>('inspect_image', { path, options: opts }),
+        invoke<PreviewGeometry>('preview_geometry', { path, options: opts }),
+      ]);
       if (seq !== previewSeq) return;
       preview = result;
+      previewGeometry = geometry;
       status = `最佳輸出：${result.cols}x${result.rows} A4，${result.landscape ? '橫向' : '直向'}\n成品圖面：約 ${result.imageWidthCm.toFixed(1)} × ${result.imageHeightCm.toFixed(1)} cm\nA4總外框：約 ${result.paperWidthCm.toFixed(1)} × ${result.paperHeightCm.toFixed(1)} cm\n重疊 ${overlapMm}mm，邊界 ${marginMm}mm`;
     } catch (error) {
       preview = null;
+      previewGeometry = null;
       status = `預覽失敗：${error}`;
     }
   }
@@ -138,60 +156,6 @@
     return `0 0 ${info.pageWidthPt * info.cols} ${info.pageHeightPt * info.rows}`;
   }
 
-  function imageCanvas(info: PreviewInfo) {
-    const x = (info.canvasWidthPt - info.imageWidthPt) / 2;
-    const y = (info.canvasHeightPt - info.imageHeightPt) / 2;
-    return { x, y, w: info.imageWidthPt, h: info.imageHeightPt };
-  }
-
-  function pageTile(info: PreviewInfo, row: number, col: number) {
-    const overlap = overlapMm * ptPerMm;
-    const img = imageCanvas(info);
-    const base = {
-      x0: col * info.baseTileWidthPt,
-      y0: row * info.baseTileHeightPt,
-      x1: (col + 1) * info.baseTileWidthPt,
-      y1: (row + 1) * info.baseTileHeightPt,
-    };
-    const clip = {
-      x0: Math.max(base.x0 - (col > 0 ? overlap : 0), img.x),
-      y0: Math.max(base.y0 - (row > 0 ? overlap : 0), img.y),
-      x1: Math.min(base.x1 + (col < info.cols - 1 ? overlap : 0), img.x + img.w),
-      y1: Math.min(base.y1 + (row < info.rows - 1 ? overlap : 0), img.y + img.h),
-    };
-    const w = clip.x1 - clip.x0;
-    const h = clip.y1 - clip.y0;
-    const pageX = col * info.pageWidthPt;
-    const pageY = row * info.pageHeightPt;
-    const dest = {
-      x0: pageX + (info.pageWidthPt - w) / 2,
-      y0: pageY + (info.pageHeightPt - h) / 2,
-      x1: pageX + (info.pageWidthPt + w) / 2,
-      y1: pageY + (info.pageHeightPt + h) / 2,
-    };
-    const sx = (dest.x1 - dest.x0) / w;
-    const sy = (dest.y1 - dest.y0) / h;
-    const guides = {
-      leftX: dest.x0 + (base.x0 - clip.x0) * sx,
-      rightX: dest.x0 + (base.x1 - clip.x0) * sx,
-      topY: dest.y0 + (base.y0 - clip.y0) * sy,
-      bottomY: dest.y0 + (base.y1 - clip.y0) * sy,
-    };
-    return { clip, dest, guides };
-  }
-
-  function markerCenters(a: { x: number; y: number }, b: { x: number; y: number }) {
-    const dx = b.x - a.x;
-    const dy = b.y - a.y;
-    const len = Math.max(Math.hypot(dx, dy), 1);
-    const ux = dx / len;
-    const uy = dy / len;
-    const offset = markerSizePt / 2 + markerGapPt;
-    return [
-      { x: a.x - ux * offset, y: a.y - uy * offset },
-      { x: b.x + ux * offset, y: b.y + uy * offset },
-    ];
-  }
 </script>
 
 <div class="app">
@@ -246,7 +210,7 @@
 
   <main class="panel preview-panel">
     <div class="preview-wrap">
-      {#if preview}
+      {#if preview && previewGeometry}
         <svg viewBox={viewBox(preview)} preserveAspectRatio="xMidYMid meet">
           <defs>
             <pattern id="paperGrid" width="18" height="18" patternUnits="userSpaceOnUse">
@@ -254,57 +218,24 @@
             </pattern>
           </defs>
           <rect x="0" y="0" width={preview.pageWidthPt * preview.cols} height={preview.pageHeightPt * preview.rows} fill="url(#paperGrid)" />
-          {#each Array(preview.rows) as _, r}
-            {#each Array(preview.cols) as _, c}
-              {@const tile = pageTile(preview, r, c)}
-              <rect x={c * preview.pageWidthPt} y={r * preview.pageHeightPt} width={preview.pageWidthPt} height={preview.pageHeightPt} fill="white" stroke="#111" stroke-width="1.2" />
-              <svg x={tile.dest.x0} y={tile.dest.y0} width={tile.dest.x1 - tile.dest.x0} height={tile.dest.y1 - tile.dest.y0} viewBox={`${tile.clip.x0} ${tile.clip.y0} ${tile.clip.x1 - tile.clip.x0} ${tile.clip.y1 - tile.clip.y0}`} preserveAspectRatio="none">
-                <image href={previewImageSrc} x={imageCanvas(preview).x} y={imageCanvas(preview).y} width={preview.imageWidthPt} height={preview.imageHeightPt} preserveAspectRatio="none" />
-              </svg>
-              <line x1={c * preview.pageWidthPt} x2={(c + 1) * preview.pageWidthPt} y1={tile.dest.y0} y2={tile.dest.y0} stroke="black" stroke-opacity="0.5" stroke-dasharray="3 3" stroke-width="0.5" />
-              <line x1={tile.dest.x1} x2={tile.dest.x1} y1={r * preview.pageHeightPt} y2={(r + 1) * preview.pageHeightPt} stroke="black" stroke-opacity="0.5" stroke-dasharray="3 3" stroke-width="0.5" />
-              <line x1={(c + 1) * preview.pageWidthPt} x2={c * preview.pageWidthPt} y1={tile.dest.y1} y2={tile.dest.y1} stroke="black" stroke-opacity="0.5" stroke-dasharray="3 3" stroke-width="0.5" />
-              <line x1={tile.dest.x0} x2={tile.dest.x0} y1={(r + 1) * preview.pageHeightPt} y2={r * preview.pageHeightPt} stroke="black" stroke-opacity="0.5" stroke-dasharray="3 3" stroke-width="0.5" />
-              {#if c > 0}
-                <line x1={tile.guides.leftX} x2={tile.guides.leftX} y1={tile.dest.y0} y2={tile.dest.y1} stroke="white" stroke-dasharray="7 3" stroke-width="2" />
-                <line x1={tile.guides.leftX} x2={tile.guides.leftX} y1={tile.dest.y0} y2={tile.dest.y1} stroke="black" stroke-opacity="0.6" stroke-dasharray="7 3" stroke-width="1" />
-                {#each markerCenters({ x: tile.guides.leftX, y: tile.dest.y0 }, { x: tile.guides.leftX, y: tile.dest.y1 }) as marker}
-                  <g transform={`translate(${marker.x} ${marker.y})`} stroke="black" stroke-width="1.1" fill="none">
-                    <rect x={-markerSizePt / 2} y={-markerSizePt / 2} width={markerSizePt} height={markerSizePt} />
-                    <line x1={-markerSizePt / 2} y1={-markerSizePt / 2} x2={markerSizePt / 2} y2={markerSizePt / 2} />
-                    <line x1={-markerSizePt / 2} y1={markerSizePt / 2} x2={markerSizePt / 2} y2={-markerSizePt / 2} />
-                  </g>
-                {/each}
-              {/if}
-              {#if r > 0}
-                <line x1={tile.dest.x0} x2={tile.dest.x1} y1={tile.guides.topY} y2={tile.guides.topY} stroke="white" stroke-dasharray="7 3" stroke-width="2" />
-                <line x1={tile.dest.x0} x2={tile.dest.x1} y1={tile.guides.topY} y2={tile.guides.topY} stroke="black" stroke-opacity="0.6" stroke-dasharray="7 3" stroke-width="1" />
-                {#each markerCenters({ x: tile.dest.x0, y: tile.guides.topY }, { x: tile.dest.x1, y: tile.guides.topY }) as marker}
-                  <g transform={`translate(${marker.x} ${marker.y})`} stroke="black" stroke-width="1.1" fill="none">
-                    <rect x={-markerSizePt / 2} y={-markerSizePt / 2} width={markerSizePt} height={markerSizePt} />
-                    <line x1={-markerSizePt / 2} y1={-markerSizePt / 2} x2={markerSizePt / 2} y2={markerSizePt / 2} />
-                    <line x1={-markerSizePt / 2} y1={markerSizePt / 2} x2={markerSizePt / 2} y2={-markerSizePt / 2} />
-                  </g>
-                {/each}
-              {/if}
-              {#if c < preview.cols - 1}
-                {#each markerCenters({ x: tile.guides.rightX, y: tile.dest.y0 }, { x: tile.guides.rightX, y: tile.dest.y1 }) as marker}
-                  <g transform={`translate(${marker.x} ${marker.y})`} stroke="black" stroke-width="1.1" fill="none">
-                    <rect x={-markerSizePt / 2} y={-markerSizePt / 2} width={markerSizePt} height={markerSizePt} />
-                    <line x1={-markerSizePt / 2} y1={-markerSizePt / 2} x2={markerSizePt / 2} y2={markerSizePt / 2} />
-                    <line x1={-markerSizePt / 2} y1={markerSizePt / 2} x2={markerSizePt / 2} y2={-markerSizePt / 2} />
-                  </g>
-                {/each}
-              {/if}
-              {#if r < preview.rows - 1}
-                {#each markerCenters({ x: tile.dest.x0, y: tile.guides.bottomY }, { x: tile.dest.x1, y: tile.guides.bottomY }) as marker}
-                  <g transform={`translate(${marker.x} ${marker.y})`} stroke="black" stroke-width="1.1" fill="none">
-                    <rect x={-markerSizePt / 2} y={-markerSizePt / 2} width={markerSizePt} height={markerSizePt} />
-                    <line x1={-markerSizePt / 2} y1={-markerSizePt / 2} x2={markerSizePt / 2} y2={markerSizePt / 2} />
-                    <line x1={-markerSizePt / 2} y1={markerSizePt / 2} x2={markerSizePt / 2} y2={-markerSizePt / 2} />
-                  </g>
-                {/each}
-              {/if}
+          {#each previewGeometry.pages as page}
+            <rect x={page.col * preview.pageWidthPt} y={page.row * preview.pageHeightPt} width={preview.pageWidthPt} height={preview.pageHeightPt} fill="white" stroke="#111" stroke-width="1.2" />
+            <svg x={page.col * preview.pageWidthPt + page.destPage.x0} y={page.row * preview.pageHeightPt + page.destPage.y0} width={page.destPage.x1 - page.destPage.x0} height={page.destPage.y1 - page.destPage.y0} viewBox={`${page.clipCanvas.x0} ${page.clipCanvas.y0} ${page.clipCanvas.x1 - page.clipCanvas.x0} ${page.clipCanvas.y1 - page.clipCanvas.y0}`} preserveAspectRatio="none">
+              <image href={previewImageSrc} x={previewGeometry.imageCanvas.x0} y={previewGeometry.imageCanvas.y0} width={preview.imageWidthPt} height={preview.imageHeightPt} preserveAspectRatio="none" />
+            </svg>
+            {#each page.outerLines as line}
+              <line x1={page.col * preview.pageWidthPt + line.a.x} y1={page.row * preview.pageHeightPt + line.a.y} x2={page.col * preview.pageWidthPt + line.b.x} y2={page.row * preview.pageHeightPt + line.b.y} stroke="black" stroke-opacity="0.5" stroke-dasharray="3 3" stroke-width="0.5" />
+            {/each}
+            {#each page.cutLines as line}
+              <line x1={page.col * preview.pageWidthPt + line.a.x} y1={page.row * preview.pageHeightPt + line.a.y} x2={page.col * preview.pageWidthPt + line.b.x} y2={page.row * preview.pageHeightPt + line.b.y} stroke="white" stroke-dasharray="7 3" stroke-width="2" />
+              <line x1={page.col * preview.pageWidthPt + line.a.x} y1={page.row * preview.pageHeightPt + line.a.y} x2={page.col * preview.pageWidthPt + line.b.x} y2={page.row * preview.pageHeightPt + line.b.y} stroke="black" stroke-opacity="0.6" stroke-dasharray="7 3" stroke-width="1" />
+            {/each}
+            {#each page.markers as marker}
+              <g transform={`translate(${page.col * preview.pageWidthPt + marker.center.x} ${page.row * preview.pageHeightPt + marker.center.y})`} stroke="black" stroke-width="1.1" fill="none">
+                <rect x={-marker.size / 2} y={-marker.size / 2} width={marker.size} height={marker.size} />
+                <line x1={-marker.size / 2} y1={-marker.size / 2} x2={marker.size / 2} y2={marker.size / 2} />
+                <line x1={-marker.size / 2} y1={marker.size / 2} x2={marker.size / 2} y2={-marker.size / 2} />
+              </g>
             {/each}
           {/each}
         </svg>

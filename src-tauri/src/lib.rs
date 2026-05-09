@@ -1,12 +1,13 @@
-mod layout;
+pub mod layout;
 mod pdf_output;
 
 use layout::{resolve_layout, PosterOptions, PreviewInfo};
+use pdf_output::PreviewGeometry;
 use serde::Serialize;
 use std::path::{Path, PathBuf};
 
 #[derive(Debug, thiserror::Error)]
-enum AppError {
+pub enum AppError {
     #[error("Image error: {0}")]
     Image(#[from] image::ImageError),
     #[error("IO error: {0}")]
@@ -25,12 +26,12 @@ impl Serialize for AppError {
 }
 
 #[derive(Debug, Serialize)]
-struct GenerateResult {
-    pages: u32,
-    output: String,
+pub struct GenerateResult {
+    pub pages: u32,
+    pub output: String,
 }
 
-fn read_image_size(path: &str) -> Result<(u32, u32), AppError> {
+pub fn read_image_size(path: &str) -> Result<(u32, u32), AppError> {
     let reader = image::ImageReader::open(path)?.with_guessed_format()?;
     Ok(reader.into_dimensions()?)
 }
@@ -42,12 +43,18 @@ fn inspect_image(path: String, options: PosterOptions) -> Result<PreviewInfo, Ap
 }
 
 #[tauri::command]
+fn preview_geometry(path: String, options: PosterOptions) -> Result<PreviewGeometry, AppError> {
+    let (w, h) = read_image_size(&path)?;
+    let preview = resolve_layout(w, h, &options).map_err(AppError::Message)?;
+    pdf_output::preview_geometry_for_image_size(w, h, &options, &preview).map_err(AppError::Message)
+}
+
+#[tauri::command]
 fn output_exists(input: String, output_name: String) -> Result<bool, AppError> {
     Ok(default_output_path(&input, &output_name)?.exists())
 }
 
-#[tauri::command]
-fn generate_poster(input: String, output_name: String, overwrite: bool, options: PosterOptions) -> Result<GenerateResult, AppError> {
+pub fn generate_poster_file(input: String, output_name: String, overwrite: bool, options: PosterOptions) -> Result<GenerateResult, AppError> {
     if !Path::new(&input).exists() {
         return Err(AppError::Message("Input file does not exist".into()));
     }
@@ -62,7 +69,7 @@ fn generate_poster(input: String, output_name: String, overwrite: bool, options:
     Ok(GenerateResult { pages: preview.cols * preview.rows, output: output_string })
 }
 
-fn default_output_path(input: &str, output_name: &str) -> Result<PathBuf, AppError> {
+pub fn default_output_path(input: &str, output_name: &str) -> Result<PathBuf, AppError> {
     let input_path = Path::new(input);
     let dir = input_path.parent().ok_or_else(|| AppError::Message("Input file has no parent directory".into()))?;
     let mut name = output_name.trim().to_string();
@@ -78,7 +85,7 @@ fn default_output_path(input: &str, output_name: &str) -> Result<PathBuf, AppErr
     Ok(dir.join(name))
 }
 
-fn default_output_name(input_path: &Path) -> String {
+pub fn default_output_name(input_path: &Path) -> String {
     let stem = input_path
         .file_stem()
         .and_then(|s| s.to_str())
@@ -87,11 +94,16 @@ fn default_output_name(input_path: &Path) -> String {
     format!("{}-poster.pdf", stem)
 }
 
+#[tauri::command]
+fn generate_poster(input: String, output_name: String, overwrite: bool, options: PosterOptions) -> Result<GenerateResult, AppError> {
+    generate_poster_file(input, output_name, overwrite, options)
+}
+
 pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_opener::init())
-        .invoke_handler(tauri::generate_handler![inspect_image, output_exists, generate_poster])
+        .invoke_handler(tauri::generate_handler![inspect_image, preview_geometry, output_exists, generate_poster])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
 }
