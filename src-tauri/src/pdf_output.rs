@@ -1,6 +1,14 @@
 use crate::layout::{mm, PosterOptions, PreviewInfo};
 use image::{codecs::jpeg::JpegEncoder, DynamicImage};
 
+const MARKER_SIZE_PT: f64 = 9.0;
+
+#[derive(Debug, Clone, Copy)]
+struct Point {
+    x: f64,
+    y: f64,
+}
+
 #[derive(Debug, Clone, Copy)]
 struct Rect {
     x0: f64,
@@ -12,6 +20,21 @@ struct Rect {
 impl Rect {
     fn width(self) -> f64 { self.x1 - self.x0 }
     fn height(self) -> f64 { self.y1 - self.y0 }
+}
+
+#[derive(Debug, Clone, Copy)]
+struct TileGeometry {
+    base_canvas: Rect,
+    clip_canvas: Rect,
+    dest_page: Rect,
+}
+
+#[derive(Debug, Clone, Copy)]
+struct GuideGeometry {
+    left_x: f64,
+    right_x: f64,
+    top_y: f64,
+    bottom_y: f64,
 }
 
 struct PageChunk {
@@ -28,60 +51,66 @@ pub fn generate(image: &DynamicImage, output: &str, options: &PosterOptions, pre
 }
 
 fn build_pages(image: &DynamicImage, options: &PosterOptions, preview: &PreviewInfo) -> Result<Vec<PageChunk>, String> {
-    let overlap = mm(options.overlap_mm);
-    let margin = mm(options.margin_mm);
-    let page_w = preview.page_width_pt;
-    let page_h = preview.page_height_pt;
-    let img_w = image.width() as f64;
-    let img_h = image.height() as f64;
-
-    let canvas = Rect { x0: 0.0, y0: 0.0, x1: preview.canvas_width_pt, y1: preview.canvas_height_pt };
-    let fitted = fit_rect(img_w, img_h, canvas);
-
+    let image_canvas = image_fit_canvas(image, preview);
     let mut pages = Vec::new();
+
     for row in 0..preview.rows {
         for col in 0..preview.cols {
-            let base = Rect {
-                x0: col as f64 * preview.base_tile_width_pt,
-                y0: row as f64 * preview.base_tile_height_pt,
-                x1: (col + 1) as f64 * preview.base_tile_width_pt,
-                y1: (row + 1) as f64 * preview.base_tile_height_pt,
-            };
-            let clip = Rect {
-                x0: (base.x0 - if col > 0 { overlap } else { 0.0 }).max(fitted.x0),
-                y0: (base.y0 - if row > 0 { overlap } else { 0.0 }).max(fitted.y0),
-                x1: (base.x1 + if col < preview.cols - 1 { overlap } else { 0.0 }).min(fitted.x1),
-                y1: (base.y1 + if row < preview.rows - 1 { overlap } else { 0.0 }).min(fitted.y1),
-            };
-            if clip.width() <= 0.0 || clip.height() <= 0.0 {
-                return Err("Tile does not intersect image".into());
-            }
-
-            let src_crop = canvas_to_source_crop(clip, fitted, image.width(), image.height());
-            let cropped = image.crop_imm(src_crop.0, src_crop.1, src_crop.2, src_crop.3).to_rgb8();
-            let mut jpg = Vec::new();
-            JpegEncoder::new_with_quality(&mut jpg, 92)
-                .encode_image(&cropped)
-                .map_err(|e| e.to_string())?;
-
-            let dest = Rect {
-                x0: (page_w - clip.width()) / 2.0,
-                y0: (page_h - clip.height()) / 2.0,
-                x1: (page_w + clip.width()) / 2.0,
-                y1: (page_h + clip.height()) / 2.0,
-            };
-            let mut content = String::new();
-            draw_image(&mut content, dest, page_h);
-            if options.draw_outer_marks {
-                draw_outer_marks(&mut content, dest, page_w, page_h, margin);
-            }
-            if options.draw_cut_guides {
-                draw_guides(&mut content, dest, clip, base, col, row, preview.cols, preview.rows, page_h);
-            }
-            pages.push(PageChunk { content, image: jpg, image_w: src_crop.2, image_h: src_crop.3 });
+            let tile = tile_geometry(row, col, preview, options, image_canvas)?;
+            let (sx, sy, sw, sh) = canvas_to_source_crop(tile.clip_canvas, image_canvas, image.width(), image.height());
+            let jpeg = encode_tile_jpeg(image, sx, sy, sw, sh)?;
+            let content = build_page_content(tile, row, col, options, preview);
+            pages.push(PageChunk { content, image: jpeg, image_w: sw, image_h: sh });
         }
     }
+
     Ok(pages)
+}
+
+// -----------------------------------------------------------------------------
+// Tile/grid geometry. These functions decide where each image tile goes.
+// They do not draw guide lines or marker boxes.
+// -----------------------------------------------------------------------------
+
+fn image_fit_canvas(image: &DynamicImage, preview: &PreviewInfo) -> Rect {
+    fit_rect(
+        image.width() as f64,
+        image.height() as f64,
+        Rect { x0: 0.0, y0: 0.0, x1: preview.canvas_width_pt, y1: preview.canvas_height_pt },
+    )
+}
+
+fn tile_geometry(row: u32, col: u32, preview: &PreviewInfo, options: &PosterOptions, image_canvas: Rect) -> Result<TileGeometry, String> {
+    let overlap = mm(options.overlap_mm);
+    let base = Rect {
+        x0: col as f64 * preview.base_tile_width_pt,
+        y0: row as f64 * preview.base_tile_height_pt,
+        x1: (col + 1) as f64 * preview.base_tile_width_pt,
+        y1: (row + 1) as f64 * preview.base_tile_height_pt,
+    };
+    let clip = Rect {
+        x0: (base.x0 - overlap_if(col > 0, overlap)).max(image_canvas.x0),
+        y0: (base.y0 - overlap_if(row > 0, overlap)).max(image_canvas.y0),
+        x1: (base.x1 + overlap_if(col < preview.cols - 1, overlap)).min(image_canvas.x1),
+        y1: (base.y1 + overlap_if(row < preview.rows - 1, overlap)).min(image_canvas.y1),
+    };
+    if clip.width() <= 0.0 || clip.height() <= 0.0 {
+        return Err("Tile does not intersect image".into());
+    }
+
+    let page_w = preview.page_width_pt;
+    let page_h = preview.page_height_pt;
+    let dest = Rect {
+        x0: (page_w - clip.width()) / 2.0,
+        y0: (page_h - clip.height()) / 2.0,
+        x1: (page_w + clip.width()) / 2.0,
+        y1: (page_h + clip.height()) / 2.0,
+    };
+    Ok(TileGeometry { base_canvas: base, clip_canvas: clip, dest_page: dest })
+}
+
+fn overlap_if(condition: bool, overlap: f64) -> f64 {
+    if condition { overlap } else { 0.0 }
 }
 
 fn fit_rect(src_w: f64, src_h: f64, canvas: Rect) -> Rect {
@@ -101,8 +130,111 @@ fn canvas_to_source_crop(r: Rect, fitted: Rect, img_w: u32, img_h: u32) -> (u32,
     (sx0, sy0, sx1 - sx0, sy1 - sy0)
 }
 
-fn pdf_y(y_top: f64, h: f64, page_h: f64) -> f64 {
-    page_h - y_top - h
+fn encode_tile_jpeg(image: &DynamicImage, x: u32, y: u32, w: u32, h: u32) -> Result<Vec<u8>, String> {
+    let cropped = image.crop_imm(x, y, w, h).to_rgb8();
+    let mut jpeg = Vec::new();
+    JpegEncoder::new_with_quality(&mut jpeg, 92)
+        .encode_image(&cropped)
+        .map_err(|e| e.to_string())?;
+    Ok(jpeg)
+}
+
+// -----------------------------------------------------------------------------
+// Page content assembly. Calls image drawing and guide drawing separately.
+// -----------------------------------------------------------------------------
+
+fn build_page_content(tile: TileGeometry, row: u32, col: u32, options: &PosterOptions, preview: &PreviewInfo) -> String {
+    let mut out = String::new();
+    draw_image(&mut out, tile.dest_page, preview.page_height_pt);
+    if options.draw_outer_marks {
+        draw_outer_marks(&mut out, tile.dest_page, preview.page_height_pt);
+    }
+    if options.draw_cut_guides {
+        let guides = guide_geometry(tile);
+        draw_cut_and_alignment_guides(&mut out, tile.dest_page, guides, row, col, preview, preview.page_height_pt);
+    }
+    out
+}
+
+fn guide_geometry(tile: TileGeometry) -> GuideGeometry {
+    let sx = tile.dest_page.width() / tile.clip_canvas.width();
+    let sy = tile.dest_page.height() / tile.clip_canvas.height();
+    GuideGeometry {
+        left_x: tile.dest_page.x0 + (tile.base_canvas.x0 - tile.clip_canvas.x0) * sx,
+        right_x: tile.dest_page.x0 + (tile.base_canvas.x1 - tile.clip_canvas.x0) * sx,
+        top_y: tile.dest_page.y0 + (tile.base_canvas.y0 - tile.clip_canvas.y0) * sy,
+        bottom_y: tile.dest_page.y0 + (tile.base_canvas.y1 - tile.clip_canvas.y0) * sy,
+    }
+}
+
+// -----------------------------------------------------------------------------
+// Guide/line drawing only. These functions must not change tile/grid geometry.
+// -----------------------------------------------------------------------------
+
+fn draw_cut_and_alignment_guides(out: &mut String, dest: Rect, guides: GuideGeometry, row: u32, col: u32, preview: &PreviewInfo, page_h: f64) {
+    if col > 0 {
+        draw_crop_line_with_boxes(out, Point { x: guides.left_x, y: dest.y0 }, Point { x: guides.left_x, y: dest.y1 }, page_h);
+    }
+    if row > 0 {
+        draw_crop_line_with_boxes(out, Point { x: dest.x0, y: guides.top_y }, Point { x: dest.x1, y: guides.top_y }, page_h);
+    }
+    if col < preview.cols - 1 {
+        draw_marker_boxes(out, Point { x: guides.right_x, y: dest.y0 }, Point { x: guides.right_x, y: dest.y1 }, page_h);
+    }
+    if row < preview.rows - 1 {
+        draw_marker_boxes(out, Point { x: dest.x0, y: guides.bottom_y }, Point { x: dest.x1, y: guides.bottom_y }, page_h);
+    }
+}
+
+fn draw_crop_line_with_boxes(out: &mut String, a: Point, b: Point, page_h: f64) {
+    draw_contrast_line(out, a, b, page_h);
+    draw_marker_boxes(out, a, b, page_h);
+}
+
+fn draw_marker_boxes(out: &mut String, a: Point, b: Point, page_h: f64) {
+    draw_x_box(out, a, MARKER_SIZE_PT, page_h);
+    draw_x_box(out, b, MARKER_SIZE_PT, page_h);
+}
+
+fn draw_contrast_line(out: &mut String, a: Point, b: Point, page_h: f64) {
+    set_stroke(out, 1.0, 1.0, 1.0, 2.4, Some("[7 3] 0"));
+    draw_line(out, a, b, page_h);
+    set_stroke(out, 0.0, 0.75, 0.95, 1.05, Some("[7 3] 0"));
+    draw_line(out, a, b, page_h);
+    set_stroke(out, 0.0, 0.0, 0.0, 0.35, Some("[1 8] 0"));
+    draw_line(out, a, b, page_h);
+}
+
+fn draw_outer_marks(out: &mut String, dest: Rect, page_h: f64) {
+    set_stroke(out, 0.65, 0.65, 0.65, 0.35, Some("[3 3] 0"));
+    draw_rect(out, dest, page_h);
+    let mark = 10.0;
+    let gap = 2.0;
+    for (a, b) in [
+        (Point { x: dest.x0 - mark, y: dest.y0 }, Point { x: dest.x0 - gap, y: dest.y0 }),
+        (Point { x: dest.x0, y: dest.y0 - mark }, Point { x: dest.x0, y: dest.y0 - gap }),
+        (Point { x: dest.x1 + gap, y: dest.y0 }, Point { x: dest.x1 + mark, y: dest.y0 }),
+        (Point { x: dest.x1, y: dest.y0 - mark }, Point { x: dest.x1, y: dest.y0 - gap }),
+        (Point { x: dest.x0 - mark, y: dest.y1 }, Point { x: dest.x0 - gap, y: dest.y1 }),
+        (Point { x: dest.x0, y: dest.y1 + gap }, Point { x: dest.x0, y: dest.y1 + mark }),
+        (Point { x: dest.x1 + gap, y: dest.y1 }, Point { x: dest.x1 + mark, y: dest.y1 }),
+        (Point { x: dest.x1, y: dest.y1 + gap }, Point { x: dest.x1, y: dest.y1 + mark }),
+    ] {
+        draw_line(out, a, b, page_h);
+    }
+}
+
+fn set_stroke(out: &mut String, r: f64, g: f64, b: f64, width: f64, dash: Option<&str>) {
+    out.push_str(&format!("{:.3} {:.3} {:.3} RG\n{:.3} w\n", r, g, b, width));
+    if let Some(d) = dash { out.push_str(&format!("{} d\n", d)); } else { out.push_str("[] 0 d\n"); }
+}
+
+fn draw_line(out: &mut String, a: Point, b: Point, page_h: f64) {
+    out.push_str(&format!("{:.3} {:.3} m {:.3} {:.3} l S\n", a.x, page_h - a.y, b.x, page_h - b.y));
+}
+
+fn draw_rect(out: &mut String, r: Rect, page_h: f64) {
+    out.push_str(&format!("{:.3} {:.3} {:.3} {:.3} re S\n", r.x0, pdf_y(r.y0, r.height(), page_h), r.width(), r.height()));
 }
 
 fn draw_image(out: &mut String, dest: Rect, page_h: f64) {
@@ -111,80 +243,14 @@ fn draw_image(out: &mut String, dest: Rect, page_h: f64) {
     out.push_str(&format!("q\n{:.3} 0 0 {:.3} {:.3} {:.3} cm\n/Im0 Do\nQ\n", dest.width(), dest.height(), x, y));
 }
 
-fn draw_outer_marks(out: &mut String, dest: Rect, _page_w: f64, page_h: f64, _margin: f64) {
-    set_stroke(out, 0.65, 0.65, 0.65, 0.35, Some("[3 3] 0"));
-    draw_rect(out, dest, page_h);
-    let l = 10.0;
-    let gap = 2.0;
-    let lines = [
-        ((dest.x0 - l, dest.y0), (dest.x0 - gap, dest.y0)),
-        ((dest.x0, dest.y0 - l), (dest.x0, dest.y0 - gap)),
-        ((dest.x1 + gap, dest.y0), (dest.x1 + l, dest.y0)),
-        ((dest.x1, dest.y0 - l), (dest.x1, dest.y0 - gap)),
-        ((dest.x0 - l, dest.y1), (dest.x0 - gap, dest.y1)),
-        ((dest.x0, dest.y1 + gap), (dest.x0, dest.y1 + l)),
-        ((dest.x1 + gap, dest.y1), (dest.x1 + l, dest.y1)),
-        ((dest.x1, dest.y1 + gap), (dest.x1, dest.y1 + l)),
-    ];
-    for (a, b) in lines { draw_line(out, a, b, page_h); }
+fn pdf_y(y_top: f64, h: f64, page_h: f64) -> f64 {
+    page_h - y_top - h
 }
 
-#[allow(clippy::too_many_arguments)]
-fn draw_guides(out: &mut String, dest: Rect, clip: Rect, base: Rect, col: u32, row: u32, cols: u32, rows: u32, page_h: f64) {
-    let left_x = dest.x0 + (base.x0 - clip.x0) * dest.width() / clip.width();
-    let right_x = dest.x0 + (base.x1 - clip.x0) * dest.width() / clip.width();
-    let top_y = dest.y0 + (base.y0 - clip.y0) * dest.height() / clip.height();
-    let bottom_y = dest.y0 + (base.y1 - clip.y0) * dest.height() / clip.height();
-
-    if col > 0 { draw_crop_line_with_boxes(out, (left_x, dest.y0), (left_x, dest.y1), (-1.0, 0.0), page_h); }
-    if row > 0 { draw_crop_line_with_boxes(out, (dest.x0, top_y), (dest.x1, top_y), (0.0, -1.0), page_h); }
-    if col < cols - 1 { draw_end_boxes(out, (right_x, dest.y0), (right_x, dest.y1), page_h); }
-    if row < rows - 1 { draw_end_boxes(out, (dest.x0, bottom_y), (dest.x1, bottom_y), page_h); }
-}
-
-fn draw_crop_line_with_boxes(out: &mut String, a: (f64, f64), b: (f64, f64), _waste_dir: (f64, f64), page_h: f64) {
-    // X boxes and crop line stay exactly on the trim/alignment endpoints.
-    // No offset, no extra ticks: grid/markers must remain visually stable.
-    draw_contrast_line(out, a, b, page_h);
-    draw_end_boxes(out, a, b, page_h);
-}
-
-fn draw_contrast_line(out: &mut String, a: (f64, f64), b: (f64, f64), page_h: f64) {
-    // White underlay keeps crop mark visible on red/dark image areas.
-    set_stroke(out, 1.0, 1.0, 1.0, 2.4, Some("[7 3] 0"));
-    draw_line(out, a, b, page_h);
-    // Cyan + black is more robust than pure red when source artwork contains red.
-    set_stroke(out, 0.0, 0.75, 0.95, 1.05, Some("[7 3] 0"));
-    draw_line(out, a, b, page_h);
-    set_stroke(out, 0.0, 0.0, 0.0, 0.35, Some("[1 8] 0"));
-    draw_line(out, a, b, page_h);
-}
-
-fn draw_end_boxes(out: &mut String, a: (f64, f64), b: (f64, f64), page_h: f64) {
-    // Do not offset boxes. They are the physical alignment targets.
-    draw_x_box(out, a, 9.0, page_h);
-    draw_x_box(out, b, 9.0, page_h);
-}
-
-fn set_stroke(out: &mut String, r: f64, g: f64, b: f64, width: f64, dash: Option<&str>) {
-    out.push_str(&format!("{:.3} {:.3} {:.3} RG\n{:.3} w\n", r, g, b, width));
-    if let Some(d) = dash { out.push_str(&format!("{} d\n", d)); } else { out.push_str("[] 0 d\n"); }
-}
-
-fn draw_line(out: &mut String, a: (f64, f64), b: (f64, f64), page_h: f64) {
-    out.push_str(&format!("{:.3} {:.3} m {:.3} {:.3} l S\n", a.0, page_h - a.1, b.0, page_h - b.1));
-}
-
-fn draw_rect(out: &mut String, r: Rect, page_h: f64) {
-    out.push_str(&format!("{:.3} {:.3} {:.3} {:.3} re S\n", r.x0, pdf_y(r.y0, r.height(), page_h), r.width(), r.height()));
-}
-
-fn draw_x_box(out: &mut String, center: (f64, f64), size: f64, page_h: f64) {
-    let r = Rect { x0: center.0 - size / 2.0, y0: center.1 - size / 2.0, x1: center.0 + size / 2.0, y1: center.1 + size / 2.0 };
-    // White halo + cyan stroke keeps markers visible on colored artwork.
+fn draw_x_box(out: &mut String, center: Point, size: f64, page_h: f64) {
+    let r = Rect { x0: center.x - size / 2.0, y0: center.y - size / 2.0, x1: center.x + size / 2.0, y1: center.y + size / 2.0 };
     draw_x_box_path(out, r, page_h, 1.0, 1.0, 1.0, 2.2);
     draw_x_box_path(out, r, page_h, 0.0, 0.75, 0.95, 0.8);
-    // Tiny black center cross gives contrast when cyan hits light artwork.
     draw_x_box_path(out, r, page_h, 0.0, 0.0, 0.0, 0.25);
 }
 
@@ -202,6 +268,10 @@ fn draw_x_box_path(out: &mut String, r: Rect, page_h: f64, red: f64, green: f64,
         r.x1, page_h - r.y0,
     ));
 }
+
+// -----------------------------------------------------------------------------
+// Minimal PDF writer.
+// -----------------------------------------------------------------------------
 
 fn write_pdf(page_w: f64, page_h: f64, pages: &[PageChunk]) -> Vec<u8> {
     let mut objects: Vec<Vec<u8>> = Vec::new();
