@@ -131,7 +131,6 @@ fn draw_outer_marks(out: &mut String, dest: Rect, _page_w: f64, page_h: f64, _ma
 
 #[allow(clippy::too_many_arguments)]
 fn draw_guides(out: &mut String, dest: Rect, clip: Rect, base: Rect, col: u32, row: u32, cols: u32, rows: u32, page_h: f64) {
-    set_stroke(out, 0.9, 0.0, 0.0, 0.9, Some("[7 3] 0"));
     let left_x = dest.x0 + (base.x0 - clip.x0) * dest.width() / clip.width();
     let right_x = dest.x0 + (base.x1 - clip.x0) * dest.width() / clip.width();
     let top_y = dest.y0 + (base.y0 - clip.y0) * dest.height() / clip.height();
@@ -143,24 +142,29 @@ fn draw_guides(out: &mut String, dest: Rect, clip: Rect, base: Rect, col: u32, r
     if row < rows - 1 { draw_end_boxes(out, (dest.x0, bottom_y), (dest.x1, bottom_y), page_h); }
 }
 
-fn line_outer_points(a: (f64, f64), b: (f64, f64)) -> ((f64, f64), (f64, f64)) {
+fn line_outer_points(a: (f64, f64), b: (f64, f64), offset: f64) -> ((f64, f64), (f64, f64)) {
     let dx = b.0 - a.0;
     let dy = b.1 - a.1;
     let len = (dx * dx + dy * dy).sqrt().max(1.0);
-    let off = 12.0;
-    ((a.0 - dx / len * off, a.1 - dy / len * off), (b.0 + dx / len * off, b.1 + dy / len * off))
+    ((a.0 - dx / len * offset, a.1 - dy / len * offset), (b.0 + dx / len * offset, b.1 + dy / len * offset))
 }
 
 fn draw_crop_line_with_boxes(out: &mut String, a: (f64, f64), b: (f64, f64), page_h: f64) {
-    // Crop line is dashed; endpoint boxes are solid so they don't look broken.
-    set_stroke(out, 0.9, 0.0, 0.0, 0.9, Some("[7 3] 0"));
-    draw_line(out, a, b, page_h);
+    // Crop line extends slightly beyond marker centers, so the marked line can be cut off.
+    let (line_a, line_b) = line_outer_points(a, b, 17.0);
+    // White underlay keeps crop mark visible on red/dark image areas.
+    set_stroke(out, 1.0, 1.0, 1.0, 2.4, Some("[7 3] 0"));
+    draw_line(out, line_a, line_b, page_h);
+    // Cyan + black is more robust than pure red when source artwork contains red.
+    set_stroke(out, 0.0, 0.75, 0.95, 1.05, Some("[7 3] 0"));
+    draw_line(out, line_a, line_b, page_h);
+    set_stroke(out, 0.0, 0.0, 0.0, 0.35, Some("[1 8] 0"));
+    draw_line(out, line_a, line_b, page_h);
     draw_end_boxes(out, a, b, page_h);
 }
 
 fn draw_end_boxes(out: &mut String, a: (f64, f64), b: (f64, f64), page_h: f64) {
-    set_stroke(out, 0.9, 0.0, 0.0, 0.7, None);
-    let (s, e) = line_outer_points(a, b);
+    let (s, e) = line_outer_points(a, b, 12.0);
     draw_x_box(out, s, 9.0, page_h);
     draw_x_box(out, e, 9.0, page_h);
 }
@@ -180,9 +184,15 @@ fn draw_rect(out: &mut String, r: Rect, page_h: f64) {
 
 fn draw_x_box(out: &mut String, center: (f64, f64), size: f64, page_h: f64) {
     let r = Rect { x0: center.0 - size / 2.0, y0: center.1 - size / 2.0, x1: center.0 + size / 2.0, y1: center.1 + size / 2.0 };
-    // Draw marker as one continuous path. Some PDF viewers keep dash phase
-    // across separate strokes, which made tiny boxes look fragmented.
-    out.push_str("[] 0 d\n1 J 1 j\n");
+    // White halo + cyan stroke keeps markers visible on colored artwork.
+    draw_x_box_path(out, r, page_h, 1.0, 1.0, 1.0, 2.2);
+    draw_x_box_path(out, r, page_h, 0.0, 0.75, 0.95, 0.8);
+    // Tiny black center cross gives contrast when cyan hits light artwork.
+    draw_x_box_path(out, r, page_h, 0.0, 0.0, 0.0, 0.25);
+}
+
+fn draw_x_box_path(out: &mut String, r: Rect, page_h: f64, red: f64, green: f64, blue: f64, width: f64) {
+    out.push_str(&format!("{:.3} {:.3} {:.3} RG\n{:.3} w\n[] 0 d\n1 J 1 j\n", red, green, blue, width));
     out.push_str(&format!(
         "{:.3} {:.3} m {:.3} {:.3} l {:.3} {:.3} l {:.3} {:.3} l h {:.3} {:.3} m {:.3} {:.3} l {:.3} {:.3} m {:.3} {:.3} l S\n",
         r.x0, page_h - r.y0,
