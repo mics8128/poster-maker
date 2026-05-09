@@ -43,6 +43,32 @@
   $: if (inputPath) refreshPreview(options, inputPath);
 
   function gridChanged() {
+    if (grid === 'Custom') {
+      const current = `${cols}x${rows}`;
+      const value = window.prompt('輸入自訂 A4 張數（欄x列），例如 5x3', current);
+      if (!value) {
+        grid = `${cols}x${rows}`;
+        return;
+      }
+      const match = value.trim().toLowerCase().replace('×', 'x').match(/^(\d+)\s*x\s*(\d+)$/);
+      if (!match) {
+        window.alert('格式錯誤，請輸入例如 5x3');
+        grid = `${cols}x${rows}`;
+        return;
+      }
+      const nextCols = Number(match[1]);
+      const nextRows = Number(match[2]);
+      if (nextCols < 1 || nextRows < 1 || nextCols > 12 || nextRows > 12) {
+        window.alert('欄列範圍請輸入 1–12');
+        grid = `${cols}x${rows}`;
+        return;
+      }
+      cols = nextCols;
+      rows = nextRows;
+      grid = `Custom ${cols}x${rows}`;
+      return;
+    }
+    if (grid.startsWith('Custom ')) return;
     const [c, r] = grid.split('/')[0].trim().split('x').map(Number);
     cols = c;
     rows = r;
@@ -120,6 +146,10 @@
         <option>3x3</option>
         <option>4x3 / 3x4</option>
         <option>4x4</option>
+        <option>Custom</option>
+        {#if grid.startsWith('Custom ')}
+          <option>{grid}</option>
+        {/if}
       </select>
       <div class="muted">自動使用最佳擺放</div>
     </div>
