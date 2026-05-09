@@ -211,10 +211,12 @@ fn endpoint_dirs(a: Point, b: Point) -> (Point, Point) {
 }
 
 fn draw_contrast_line(out: &mut String, a: Point, b: Point, page_h: f64) {
-    set_stroke(out, 1.0, 1.0, 1.0, 2.4, Some("[7 3] 0"));
+    set_stroke(out, 1.0, 1.0, 1.0, 2.0, Some("[7 3] 0"));
     draw_line(out, a, b, page_h);
-    set_stroke(out, 0.0, 0.75, 0.95, 1.05, Some("[7 3] 0"));
+    out.push_str("q\n/GS60 gs\n");
+    set_stroke(out, 0.0, 0.0, 0.0, 1.0, Some("[7 3] 0"));
     draw_line(out, a, b, page_h);
+    out.push_str("Q\n");
 }
 
 fn draw_outer_marks(out: &mut String, dest: Rect, page_w: f64, page_h: f64) {
@@ -285,7 +287,7 @@ fn write_pdf(page_w: f64, page_h: f64, pages: &[PageChunk]) -> Vec<u8> {
         let content_obj = page_obj + 1;
         let image_obj = page_obj + 2;
         objects.push(format!(
-            "<< /Type /Page /Parent {} 0 R /MediaBox [0 0 {:.3} {:.3}] /Resources << /XObject << /Im0 {} 0 R >> /ExtGState << /GS50 << /Type /ExtGState /CA 0.5 /ca 0.5 >> >> >> /Contents {} 0 R >>",
+            "<< /Type /Page /Parent {} 0 R /MediaBox [0 0 {:.3} {:.3}] /Resources << /XObject << /Im0 {} 0 R >> /ExtGState << /GS50 << /Type /ExtGState /CA 0.5 /ca 0.5 >> /GS60 << /Type /ExtGState /CA 0.6 /ca 0.6 >> >> >> /Contents {} 0 R >>",
             pages_obj, page_w, page_h, image_obj, content_obj
         ).into_bytes());
         objects.push(stream_object(p.content.as_bytes()));
