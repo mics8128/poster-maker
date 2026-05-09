@@ -47,8 +47,9 @@
 
   function gridChanged() {
     if (grid.startsWith('Custom')) {
-      cols = customCols;
-      rows = customRows;
+      customCols = cols;
+      customRows = rows;
+      grid = `Custom ${customCols}x${customRows}`;
       return;
     }
     const [c, r] = grid.split('/')[0].trim().split('x').map(Number);
@@ -56,12 +57,16 @@
     rows = r;
   }
 
-  function customGridChanged() {
-    customCols = clampGrid(customCols);
-    customRows = clampGrid(customRows);
+  function setCustomGrid(nextCols: number, nextRows: number) {
+    customCols = clampGrid(nextCols);
+    customRows = clampGrid(nextRows);
     cols = customCols;
     rows = customRows;
     grid = `Custom ${customCols}x${customRows}`;
+  }
+
+  function adjustCustom(which: 'cols' | 'rows', delta: number) {
+    setCustomGrid(customCols + (which === 'cols' ? delta : 0), customRows + (which === 'rows' ? delta : 0));
   }
 
   function clampGrid(value: number) {
@@ -150,8 +155,18 @@
       <div class="muted">自動使用最佳擺放</div>
       {#if grid.startsWith('Custom')}
         <div class="custom-grid">
-          <label>欄<input type="number" min="1" max="12" bind:value={customCols} on:input={customGridChanged} /></label>
-          <label>列<input type="number" min="1" max="12" bind:value={customRows} on:input={customGridChanged} /></label>
+          <div class="stepper">
+            <div class="stepper-label">欄</div>
+            <button type="button" on:click={() => adjustCustom('cols', -1)}>−</button>
+            <div class="stepper-value">{customCols}</div>
+            <button type="button" on:click={() => adjustCustom('cols', 1)}>+</button>
+          </div>
+          <div class="stepper">
+            <div class="stepper-label">列</div>
+            <button type="button" on:click={() => adjustCustom('rows', -1)}>−</button>
+            <div class="stepper-value">{customRows}</div>
+            <button type="button" on:click={() => adjustCustom('rows', 1)}>+</button>
+          </div>
         </div>
       {/if}
     </div>
