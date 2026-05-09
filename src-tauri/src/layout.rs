@@ -7,6 +7,7 @@ const A4_HEIGHT_PT: f64 = 841.8897637795;
 const MM_TO_PT: f64 = 72.0 / 25.4;
 const MARKER_SIZE_PT: f64 = 12.0;
 const MARKER_GAP_PT: f64 = 2.0;
+const MARKER_STROKE_PT: f64 = 1.1;
 
 #[derive(Debug, Clone, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -137,8 +138,13 @@ pub fn resolve_layout(src_w_px: u32, src_h_px: u32, options: &PosterOptions) -> 
 }
 
 fn reserved_margin(options: &PosterOptions) -> f64 {
-    let marker_clearance = if options.draw_cut_guides { MARKER_SIZE_PT + MARKER_GAP_PT } else { 0.0 };
-    mm(options.margin_mm).max(marker_clearance)
+    let margin = mm(options.margin_mm);
+    let marker_clearance = if options.draw_cut_guides {
+        MARKER_SIZE_PT + MARKER_GAP_PT + MARKER_STROKE_PT / 2.0
+    } else {
+        0.0
+    };
+    margin + marker_clearance
 }
 
 #[cfg(test)]
