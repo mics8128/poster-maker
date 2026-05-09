@@ -149,5 +149,4 @@ CI 會產生並上傳：
 - Python 3.10+
 - PySide6：GUI
 - PyMuPDF：PDF 讀寫與裁切
-- Pillow：圖片讀取
 - PyInstaller：桌面 App 打包

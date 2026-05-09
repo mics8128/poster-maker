@@ -1,32 +1,17 @@
-# PyInstaller spec for Poster Maker
-from PyInstaller.utils.hooks import collect_all
+# PyInstaller spec for Poster Maker (Tk GUI, much smaller than Qt)
 
 block_cipher = None
 
-datas = []
-binaries = []
-hiddenimports = []
-
-for package in ("PySide6", "fitz", "PIL"):
-    package_datas, package_binaries, package_hiddenimports = collect_all(package)
-    datas += package_datas
-    binaries += package_binaries
-    hiddenimports += package_hiddenimports
-
-
 a = Analysis(
     ["packaging/poster_maker_gui.py"],
-    pathex=[],
-    binaries=binaries,
-    datas=datas,
-    hiddenimports=hiddenimports,
+    pathex=["src"],
+    binaries=[],
+    datas=[],
+    hiddenimports=[],
     hookspath=[],
     hooksconfig={},
     runtime_hooks=[],
-    excludes=[],
-    win_no_prefer_redirects=False,
-    win_private_assemblies=False,
-    cipher=block_cipher,
+    excludes=["PySide6", "shiboken6", "PIL", "Pillow", "numpy", "matplotlib", "pandas", "scipy"],
     noarchive=False,
 )
 pyz = PYZ(a.pure, a.zipped_data, cipher=block_cipher)

@@ -7,7 +7,6 @@ from dataclasses import dataclass
 from pathlib import Path
 
 import fitz  # PyMuPDF
-from PIL import Image
 
 A4_WIDTH_PT = 595.2755905512
 A4_HEIGHT_PT = 841.8897637795
@@ -120,25 +119,22 @@ def load_source_as_pdf(path: str | Path, page_index: int = 0, dpi: int = 200) ->
     if suffix not in SUPPORTED_IMAGES:
         raise ValueError(f"Unsupported input type: {suffix}")
 
-    # Normalize through Pillow, preserves broad image support and avoids EXIF rotation surprises.
-    img = Image.open(path)
-    img = img.convert("RGB")
-    w_px, h_px = img.size
-    w_pt = w_px / dpi * 72
-    h_pt = h_px / dpi * 72
+    # Let MuPDF decode supported image formats directly. Avoid Pillow in the
+    # packaged app: smaller bundle, fewer native libraries.
+    img_doc = fitz.open(path)
+    rect = img_doc[0].rect
+    # MuPDF image pages use pixel-like dimensions. Map pixels to physical points
+    # via requested DPI for predictable printed size.
+    w_pt = rect.width / dpi * 72
+    h_pt = rect.height / dpi * 72
+    pdfbytes = img_doc.convert_to_pdf()
+    img_doc.close()
 
-    tmp = tempfile.NamedTemporaryFile(suffix=".png", delete=False)
-    tmp_path = tmp.name
-    tmp.close()
-    img.save(tmp_path)
-
+    src = fitz.open("pdf", pdfbytes)
     doc = fitz.open()
     page = doc.new_page(width=w_pt, height=h_pt)
-    page.insert_image(fitz.Rect(0, 0, w_pt, h_pt), filename=tmp_path, keep_proportion=False)
-    try:
-        os.unlink(tmp_path)
-    except OSError:
-        pass
+    page.show_pdf_page(fitz.Rect(0, 0, w_pt, h_pt), src, 0, keep_proportion=False)
+    src.close()
     return doc, 0
 
 

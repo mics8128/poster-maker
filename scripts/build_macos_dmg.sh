@@ -9,6 +9,7 @@ cd "$ROOT_DIR"
 python -m pip install --upgrade pip
 python -m pip install -e . pyinstaller
 pyinstaller --noconfirm --clean poster_maker.spec
+python scripts/prune_pyinstaller_bundle.py
 
 mkdir -p release
 DMG_DIR="build/dmg"
