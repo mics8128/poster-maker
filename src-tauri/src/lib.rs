@@ -3,7 +3,7 @@ mod pdf_output;
 
 use layout::{resolve_layout, PosterOptions, PreviewInfo};
 use serde::Serialize;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
 #[derive(Debug, thiserror::Error)]
 enum AppError {
@@ -42,21 +42,53 @@ fn inspect_image(path: String, options: PosterOptions) -> Result<PreviewInfo, Ap
 }
 
 #[tauri::command]
-fn generate_poster(input: String, output: String, options: PosterOptions) -> Result<GenerateResult, AppError> {
+fn output_exists(input: String, output_name: String) -> Result<bool, AppError> {
+    Ok(default_output_path(&input, &output_name)?.exists())
+}
+
+#[tauri::command]
+fn generate_poster(input: String, output_name: String, options: PosterOptions) -> Result<GenerateResult, AppError> {
     if !Path::new(&input).exists() {
         return Err(AppError::Message("Input file does not exist".into()));
     }
+    let output = default_output_path(&input, &output_name)?;
+    let output_string = output.to_string_lossy().to_string();
     let image = image::open(&input)?;
     let preview = resolve_layout(image.width(), image.height(), &options).map_err(AppError::Message)?;
-    pdf_output::generate(&image, &output, &options, &preview).map_err(AppError::Message)?;
-    Ok(GenerateResult { pages: preview.cols * preview.rows, output })
+    pdf_output::generate(&image, &output_string, &options, &preview).map_err(AppError::Message)?;
+    Ok(GenerateResult { pages: preview.cols * preview.rows, output: output_string })
+}
+
+fn default_output_path(input: &str, output_name: &str) -> Result<PathBuf, AppError> {
+    let input_path = Path::new(input);
+    let dir = input_path.parent().ok_or_else(|| AppError::Message("Input file has no parent directory".into()))?;
+    let mut name = output_name.trim().to_string();
+    if name.is_empty() {
+        name = default_output_name(input_path);
+    }
+    if Path::new(&name).components().count() != 1 {
+        return Err(AppError::Message("Output must be a file name only".into()));
+    }
+    if !name.to_lowercase().ends_with(".pdf") {
+        name.push_str(".pdf");
+    }
+    Ok(dir.join(name))
+}
+
+fn default_output_name(input_path: &Path) -> String {
+    let stem = input_path
+        .file_stem()
+        .and_then(|s| s.to_str())
+        .filter(|s| !s.is_empty())
+        .unwrap_or("poster");
+    format!("{}-poster.pdf", stem)
 }
 
 pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_opener::init())
-        .invoke_handler(tauri::generate_handler![inspect_image, generate_poster])
+        .invoke_handler(tauri::generate_handler![inspect_image, output_exists, generate_poster])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
 }

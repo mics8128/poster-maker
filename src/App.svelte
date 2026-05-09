@@ -1,6 +1,6 @@
 <script lang="ts">
   import { invoke } from '@tauri-apps/api/core';
-  import { open, save } from '@tauri-apps/plugin-dialog';
+  import { open } from '@tauri-apps/plugin-dialog';
 
   const version = '0.2.0-alpha.1';
   const ptPerMm = 72 / 25.4;
@@ -29,7 +29,7 @@
   };
 
   let inputPath = '';
-  let outputPath = '';
+  let outputName = '';
   let grid = '3x2 / 2x3';
   let cols = 3;
   let rows = 2;
@@ -74,17 +74,18 @@
     return Math.max(1, Math.min(12, Math.round(n)));
   }
 
+  function defaultOutputName(path: string) {
+    const file = path.split(/[\\/]/).pop() || 'poster';
+    const stem = file.replace(/\.[^.]*$/, '') || 'poster';
+    return `${stem}-poster.pdf`;
+  }
+
   async function pickInput() {
     const selected = await open({ multiple: false, filters: [{ name: 'Images', extensions: ['png', 'jpg', 'jpeg', 'webp', 'bmp', 'tif', 'tiff'] }] });
     if (typeof selected === 'string') {
       inputPath = selected;
-      if (!outputPath) outputPath = selected.replace(/\.[^.]+$/, '-poster.pdf');
+      outputName = defaultOutputName(selected);
     }
-  }
-
-  async function pickOutput() {
-    const selected = await save({ filters: [{ name: 'PDF', extensions: ['pdf'] }], defaultPath: outputPath || 'poster.pdf' });
-    if (selected) outputPath = selected;
   }
 
   let previewSeq = 0;
@@ -102,14 +103,19 @@
   }
 
   async function generate() {
-    if (!inputPath || !outputPath) {
-      status = '請先選來源與輸出 PDF。';
+    if (!inputPath || !outputName.trim()) {
+      status = '請先選來源並填輸出 PDF 檔名。';
       return;
     }
     busy = true;
     status = '產生中…';
     try {
-      const result = await invoke<{ pages: number; output: string }>('generate_poster', { input: inputPath, output: outputPath, options });
+      const exists = await invoke<boolean>('output_exists', { input: inputPath, outputName });
+      if (exists && !window.confirm(`「${outputName}」已存在，是否覆蓋？`)) {
+        status = '已取消，未覆蓋既有檔案。';
+        return;
+      }
+      const result = await invoke<{ pages: number; output: string }>('generate_poster', { input: inputPath, outputName, options });
       status = `完成：${result.pages} 頁 A4 → ${result.output}`;
     } catch (error) {
       status = `產生失敗：${error}`;
@@ -133,8 +139,9 @@
     </div>
 
     <div class="field">
-      <div class="label">輸出 PDF</div>
-      <div class="row"><input bind:value={outputPath} /><button on:click={pickOutput}>儲存…</button></div>
+      <div class="label">輸出 PDF 檔名</div>
+      <input bind:value={outputName} placeholder="example-poster.pdf" />
+      <div class="muted">預設存到來源圖片同一個資料夾</div>
     </div>
 
     <div class="field">
