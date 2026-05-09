@@ -8,7 +8,9 @@
     "sync-version": "node scripts/sync-version.mjs",
     "build": "tsc && vite build",
     "preview": "vite preview",
-    "tauri": "tauri"
+    "tauri": "node scripts/tauri.mjs",
+    "cargo": "node scripts/cargo.mjs",
+    "clean": "rm -rf dist src-tauri/target ~/Library/Caches/poster-maker"
   },
   "dependencies": {
     "@tauri-apps/api": "^2.9.0",

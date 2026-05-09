@@ -1,49 +1,35 @@
-# Poster Maker alpha review
+# Poster Maker notes
 
 ## Current state
 
 - Tauri/Svelte/Rust image-only alpha.
-- PDF input intentionally deferred.
 - GUI and CLI exist.
-- Preview and PDF output now share Rust-generated geometry, so tile/guide positions have a single source of truth.
-- Release CI currently builds macOS Apple Silicon only.
+- Preview and PDF output share Rust-generated geometry; frontend should not reimplement layout math.
+- macOS Apple Silicon alpha release exists.
+- Old Python version was removed from the working tree; retrieve from git history if needed.
 
-## Known limitations / risks
+## Known limitations
 
 1. **macOS app is ad-hoc signed, not notarized**
-   - Users may still need right-click Open or remove quarantine.
-   - Proper public release needs Apple Developer ID signing + notarization.
+   - Alpha users may need right-click Open or remove quarantine.
+   - Public release needs Apple Developer ID signing + notarization.
 
 2. **Windows release deferred**
-   - GitHub Windows MSI build failed because MSI does not accept `0.2.0-alpha.N` style prerelease versions.
-   - Need local Windows verification and either MSI-compatible versioning or NSIS/zip-only Windows release.
+   - GitHub Windows MSI build failed because MSI does not accept `0.2.0-alpha.N` prerelease versions.
+   - Verify on Windows locally and choose NSIS/zip or MSI-compatible stable versioning.
 
 3. **macOS Intel not built**
-   - Intentionally skipped for alpha. Apple Silicon only.
+   - Apple Silicon only for alpha.
 
-4. **PDF writer is custom/minimal**
-   - Produces valid image tiled PDFs but still needs more smoke tests around page count, page dimensions, and PDF readers.
+4. **Need automated artifact smoke test**
+   - Generate a PDF from a fixture image.
+   - Validate page count and A4 dimensions.
 
-5. **Image preview uses browser SVG/image rendering**
-   - Geometry is shared with Rust, but browser image rendering/cropping can still differ slightly from PDF JPEG crop behavior.
-
-6. **No automated end-to-end artifact test yet**
-   - Need command-line smoke test that generates PDF from a fixture image and validates page count / dimensions.
-
-7. **No auto-updater**
+5. **No auto-updater**
    - GitHub releases only.
 
-## Release process notes
+## Release notes
 
-- Single source version is `package.json`.
-- Run `pnpm sync-version` to sync:
-  - `src-tauri/Cargo.toml`
-  - `src-tauri/tauri.conf.json`
-- Frontend reads version from `package.json`.
-
-## Recommended next fixes
-
-1. Add fixture-based PDF smoke test.
-2. Add local DMG packaging script that preserves Applications shortcut and re-signs ad-hoc correctly.
-3. Decide Windows packaging strategy: NSIS/zip vs MSI-compatible stable version.
-4. Add notarization later when ready for general users.
+- Version source: `package.json`.
+- Sync version: `pnpm sync-version`.
+- Local macOS alpha package: `VERSION=0.2.0-alpha.N scripts/build_macos_alpha.sh`.

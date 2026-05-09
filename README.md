@@ -2,7 +2,7 @@
 
 Poster Maker 是一個海報分割工具：選一張圖片，輸出多頁 A4 PDF，列印後裁切、重疊、拼貼成大海報。
 
-目前主線是 **Rust + Tauri image-only alpha**。舊 Python 版保留在 `legacy/python-poster-maker/`。
+目前主線是 **Rust + Tauri image-only alpha**。舊 Python 版已從工作樹移除，需要時可從 git history 取回。
 
 ## 目前版本
 
@@ -97,7 +97,6 @@ src/                         Svelte GUI
 src-tauri/src/layout.rs      layout / best fit
 src-tauri/src/pdf_output.rs  shared preview/PDF geometry + minimal PDF writer
 src-tauri/src/cli.rs         CLI entrypoint
-legacy/python-poster-maker/  old Python implementation
 REVIEW.md                    current limitations / next steps
 ```
 
