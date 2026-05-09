@@ -27,6 +27,10 @@ from PySide6.QtWidgets import (
 from .core import PosterOptions, generate_poster_pdf, load_source_as_pdf, mm, page_size, resolve_layout
 
 
+def pt_to_cm(value: float) -> float:
+    return value / 72 * 2.54
+
+
 class Worker(QThread):
     finished_ok = Signal(str, int)
     failed = Signal(str)
@@ -244,8 +248,10 @@ class MainWindow(QMainWindow):
             printable_w = (w_pt - 2 * margin_pt) * layout.cols
             printable_h = (h_pt - 2 * margin_pt) * layout.rows
             fit_scale = min(printable_w / src_rect.width, printable_h / src_rect.height)
-            fit_w = src_rect.width * fit_scale * scale
-            fit_h = src_rect.height * fit_scale * scale
+            fitted_w_pt = src_rect.width * fit_scale
+            fitted_h_pt = src_rect.height * fit_scale
+            fit_w = fitted_w_pt * scale
+            fit_h = fitted_h_pt * scale
             fit_x = (img_w - fit_w) / 2
             fit_y = (img_h - fit_h) / 2
             painter.fillRect(int(fit_x), int(fit_y), int(fit_w), int(fit_h), 0xFFECECEC)
@@ -280,8 +286,14 @@ class MainWindow(QMainWindow):
 
             painter.end()
             self.preview_label.setPixmap(QPixmap.fromImage(image))
+            paper_w_cm = pt_to_cm(poster_w)
+            paper_h_cm = pt_to_cm(poster_h)
+            image_w_cm = pt_to_cm(fitted_w_pt)
+            image_h_cm = pt_to_cm(fitted_h_pt)
             self.status_label.setText(
-                f"最佳輸出：{layout.cols}x{layout.rows} A4，{'橫向' if layout.landscape else '直向'}，"
+                f"最佳輸出：{layout.cols}x{layout.rows} A4，{'橫向' if layout.landscape else '直向'}\n"
+                f"成品圖面：約 {image_w_cm:.1f} × {image_h_cm:.1f} cm；"
+                f"A4總外框：約 {paper_w_cm:.1f} × {paper_h_cm:.1f} cm\n"
                 f"重疊 {options.overlap_mm:g}mm，邊界 {options.margin_mm:g}mm"
             )
             src_doc.close()
