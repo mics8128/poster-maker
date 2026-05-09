@@ -1,6 +1,6 @@
 <script lang="ts">
   import { invoke } from '@tauri-apps/api/core';
-  import { open } from '@tauri-apps/plugin-dialog';
+  import { confirm, open } from '@tauri-apps/plugin-dialog';
 
   const version = '0.2.0-alpha.1';
   const ptPerMm = 72 / 25.4;
@@ -111,11 +111,14 @@
     status = '產生中…';
     try {
       const exists = await invoke<boolean>('output_exists', { input: inputPath, outputName });
-      if (exists && !window.confirm(`「${outputName}」已存在，是否覆蓋？`)) {
-        status = '已取消，未覆蓋既有檔案。';
-        return;
+      if (exists) {
+        const overwrite = await confirm(`「${outputName}」已存在，是否覆蓋？`, { title: '覆蓋既有 PDF？', kind: 'warning' });
+        if (!overwrite) {
+          status = '已取消，未覆蓋既有檔案。';
+          return;
+        }
       }
-      const result = await invoke<{ pages: number; output: string }>('generate_poster', { input: inputPath, outputName, options });
+      const result = await invoke<{ pages: number; output: string }>('generate_poster', { input: inputPath, outputName, overwrite: exists, options });
       status = `完成：${result.pages} 頁 A4 → ${result.output}`;
     } catch (error) {
       status = `產生失敗：${error}`;

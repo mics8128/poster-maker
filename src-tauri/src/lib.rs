@@ -47,11 +47,14 @@ fn output_exists(input: String, output_name: String) -> Result<bool, AppError> {
 }
 
 #[tauri::command]
-fn generate_poster(input: String, output_name: String, options: PosterOptions) -> Result<GenerateResult, AppError> {
+fn generate_poster(input: String, output_name: String, overwrite: bool, options: PosterOptions) -> Result<GenerateResult, AppError> {
     if !Path::new(&input).exists() {
         return Err(AppError::Message("Input file does not exist".into()));
     }
     let output = default_output_path(&input, &output_name)?;
+    if output.exists() && !overwrite {
+        return Err(AppError::Message("Output file already exists".into()));
+    }
     let output_string = output.to_string_lossy().to_string();
     let image = image::open(&input)?;
     let preview = resolve_layout(image.width(), image.height(), &options).map_err(AppError::Message)?;
