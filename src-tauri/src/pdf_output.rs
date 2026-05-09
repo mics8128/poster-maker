@@ -217,13 +217,13 @@ fn draw_contrast_line(out: &mut String, a: Point, b: Point, page_h: f64) {
     draw_line(out, a, b, page_h);
 }
 
-fn draw_outer_marks(out: &mut String, dest: Rect, _page_w: f64, page_h: f64) {
+fn draw_outer_marks(out: &mut String, dest: Rect, page_w: f64, page_h: f64) {
     out.push_str("q\n/GS50 gs\n");
-    set_stroke(out, 0.0, 0.0, 0.0, 0.5, None);
-    draw_line(out, Point { x: dest.x0, y: dest.y0 }, Point { x: dest.x1, y: dest.y0 }, page_h);
-    draw_line(out, Point { x: dest.x1, y: dest.y0 }, Point { x: dest.x1, y: dest.y1 }, page_h);
-    draw_line(out, Point { x: dest.x1, y: dest.y1 }, Point { x: dest.x0, y: dest.y1 }, page_h);
-    draw_line(out, Point { x: dest.x0, y: dest.y1 }, Point { x: dest.x0, y: dest.y0 }, page_h);
+    set_stroke(out, 0.0, 0.0, 0.0, 0.5, Some("[3 3] 0"));
+    draw_line(out, Point { x: 0.0, y: dest.y0 }, Point { x: page_w, y: dest.y0 }, page_h);
+    draw_line(out, Point { x: dest.x1, y: 0.0 }, Point { x: dest.x1, y: page_h }, page_h);
+    draw_line(out, Point { x: page_w, y: dest.y1 }, Point { x: 0.0, y: dest.y1 }, page_h);
+    draw_line(out, Point { x: dest.x0, y: page_h }, Point { x: dest.x0, y: 0.0 }, page_h);
     out.push_str("Q\n");
 }
 
