@@ -180,9 +180,20 @@ fn draw_rect(out: &mut String, r: Rect, page_h: f64) {
 
 fn draw_x_box(out: &mut String, center: (f64, f64), size: f64, page_h: f64) {
     let r = Rect { x0: center.0 - size / 2.0, y0: center.1 - size / 2.0, x1: center.0 + size / 2.0, y1: center.1 + size / 2.0 };
-    draw_rect(out, r, page_h);
-    draw_line(out, (r.x0, r.y0), (r.x1, r.y1), page_h);
-    draw_line(out, (r.x0, r.y1), (r.x1, r.y0), page_h);
+    // Draw marker as one continuous path. Some PDF viewers keep dash phase
+    // across separate strokes, which made tiny boxes look fragmented.
+    out.push_str("[] 0 d\n1 J 1 j\n");
+    out.push_str(&format!(
+        "{:.3} {:.3} m {:.3} {:.3} l {:.3} {:.3} l {:.3} {:.3} l h {:.3} {:.3} m {:.3} {:.3} l {:.3} {:.3} m {:.3} {:.3} l S\n",
+        r.x0, page_h - r.y0,
+        r.x1, page_h - r.y0,
+        r.x1, page_h - r.y1,
+        r.x0, page_h - r.y1,
+        r.x0, page_h - r.y0,
+        r.x1, page_h - r.y1,
+        r.x0, page_h - r.y1,
+        r.x1, page_h - r.y0,
+    ));
 }
 
 fn write_pdf(page_w: f64, page_h: f64, pages: &[PageChunk]) -> Vec<u8> {
