@@ -201,8 +201,6 @@ fn draw_contrast_line(out: &mut String, a: Point, b: Point, page_h: f64) {
     draw_line(out, a, b, page_h);
     set_stroke(out, 0.0, 0.75, 0.95, 1.05, Some("[7 3] 0"));
     draw_line(out, a, b, page_h);
-    set_stroke(out, 0.0, 0.0, 0.0, 0.35, Some("[1 8] 0"));
-    draw_line(out, a, b, page_h);
 }
 
 fn draw_outer_marks(out: &mut String, dest: Rect, page_h: f64) {
