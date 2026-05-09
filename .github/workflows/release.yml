@@ -8,33 +8,17 @@ on:
   workflow_dispatch:
     inputs:
       version:
-        description: "Version/tag to release, e.g. v0.2.0-alpha.1"
+        description: "Version/tag to release, e.g. v0.2.0-alpha.2"
         required: true
-        default: "v0.2.0-alpha.1"
+        default: "v0.2.0-alpha.2"
 
 permissions:
   contents: write
 
 jobs:
-  build:
-    name: Build ${{ matrix.name }}
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - name: macOS Apple Silicon
-            os: macos-14
-            args: "--target aarch64-apple-darwin"
-            target: aarch64-apple-darwin
-          - name: macOS Intel
-            os: macos-13
-            args: "--target x86_64-apple-darwin"
-            target: x86_64-apple-darwin
-          - name: Windows x64
-            os: windows-latest
-            args: ""
-            target: x86_64-pc-windows-msvc
-    runs-on: ${{ matrix.os }}
+  build-macos-apple-silicon:
+    name: Build macOS Apple Silicon
+    runs-on: macos-14
     steps:
       - uses: actions/checkout@v4
 
@@ -52,55 +36,45 @@ jobs:
       - name: Setup Rust
         uses: dtolnay/rust-toolchain@stable
         with:
-          targets: ${{ matrix.target }}
+          targets: aarch64-apple-darwin
 
       - name: Install frontend deps
         run: pnpm install --frozen-lockfile
 
       - name: Run tests
-        run: cargo test --manifest-path src-tauri/Cargo.toml --target ${{ matrix.target }}
+        run: cargo test --manifest-path src-tauri/Cargo.toml --target aarch64-apple-darwin
 
       - name: Build Tauri bundle
         uses: tauri-apps/tauri-action@v0
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
-          args: ${{ matrix.args }}
+          args: --target aarch64-apple-darwin
 
       - name: Build CLI
-        run: cargo build --manifest-path src-tauri/Cargo.toml --release --bin poster-maker-cli --target ${{ matrix.target }}
+        run: cargo build --manifest-path src-tauri/Cargo.toml --release --bin poster-maker-cli --target aarch64-apple-darwin
 
-      - name: Stage CLI artifact (Unix)
-        if: runner.os != 'Windows'
+      - name: Stage CLI artifact
         shell: bash
         run: |
           mkdir -p cli-artifacts
-          cp "src-tauri/target/${{ matrix.target }}/release/poster-maker-cli" "cli-artifacts/poster-maker-cli-${{ matrix.target }}"
-
-      - name: Stage CLI artifact (Windows)
-        if: runner.os == 'Windows'
-        shell: pwsh
-        run: |
-          New-Item -ItemType Directory -Force cli-artifacts | Out-Null
-          Copy-Item "src-tauri\target\${{ matrix.target }}\release\poster-maker-cli.exe" "cli-artifacts\poster-maker-cli-${{ matrix.target }}.exe"
+          cp src-tauri/target/aarch64-apple-darwin/release/poster-maker-cli cli-artifacts/poster-maker-cli-aarch64-apple-darwin
 
       - uses: actions/upload-artifact@v4
         with:
-          name: cli-${{ matrix.target }}
+          name: cli-aarch64-apple-darwin
           path: cli-artifacts/*
           if-no-files-found: error
 
       - uses: actions/upload-artifact@v4
         with:
-          name: bundles-${{ matrix.target }}
-          path: |
-            src-tauri/target/${{ matrix.target }}/release/bundle/**/*
-            src-tauri/target/release/bundle/**/*
+          name: bundles-aarch64-apple-darwin
+          path: src-tauri/target/aarch64-apple-darwin/release/bundle/**/*
           if-no-files-found: error
 
   publish:
     name: Publish GitHub Release
-    needs: build
+    needs: build-macos-apple-silicon
     runs-on: ubuntu-latest
     steps:
       - uses: actions/download-artifact@v4
