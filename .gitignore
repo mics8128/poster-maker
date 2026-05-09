@@ -3,6 +3,8 @@ __pycache__/
 .venv/
 build/
 dist/
+node_modules/
+src-tauri/target/
 # Keep PyInstaller specs tracked; ignore generated build/dist instead.
 .DS_Store
 .pytest_cache/

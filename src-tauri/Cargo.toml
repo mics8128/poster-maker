@@ -1,0 +1,23 @@
+[package]
+name = "poster-maker"
+version = "0.2.0-alpha.1"
+description = "Image poster tiling tool"
+authors = ["mics"]
+edition = "2021"
+
+[lib]
+name = "poster_maker_lib"
+crate-type = ["staticlib", "cdylib", "rlib"]
+
+[build-dependencies]
+tauri-build = { version = "2", features = [] }
+
+[dependencies]
+tauri = { version = "2", features = [] }
+tauri-plugin-dialog = "2"
+tauri-plugin-opener = "2"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+thiserror = "2"
+image = { version = "0.25", default-features = false, features = ["png", "jpeg", "webp", "bmp", "tiff"] }
+printpdf = { version = "0.8", default-features = false, features = ["png", "jpeg"] }
