@@ -22,15 +22,15 @@ jobs:
     env:
       RELEASE_TAG: ${{ github.ref_type == 'tag' && github.ref_name || inputs.version }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
 
       - name: Install pnpm
-        uses: pnpm/action-setup@v4
+        uses: pnpm/action-setup@v5
         with:
           version: 10
 
       - name: Setup Node
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v6
         with:
           node-version: 22
           cache: pnpm
@@ -71,13 +71,13 @@ jobs:
           mkdir -p cli-artifacts
           cp src-tauri/target/aarch64-apple-darwin/release/poster-maker-cli cli-artifacts/poster-maker-cli-aarch64-apple-darwin
 
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: cli-aarch64-apple-darwin
           path: cli-artifacts/*
           if-no-files-found: error
 
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: bundles-aarch64-apple-darwin
           path: src-tauri/target/aarch64-apple-darwin/release/bundle/**/*
@@ -90,11 +90,11 @@ jobs:
       - build-windows
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v7
         with:
           path: artifacts
       - name: Publish release
-        uses: softprops/action-gh-release@v2
+        uses: softprops/action-gh-release@v3
         with:
           tag_name: ${{ github.ref_type == 'tag' && github.ref_name || inputs.version }}
           name: Poster Maker ${{ github.ref_type == 'tag' && github.ref_name || inputs.version }}
@@ -108,15 +108,15 @@ jobs:
     env:
       RELEASE_TAG: ${{ github.ref_type == 'tag' && github.ref_name || inputs.version }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
 
       - name: Install pnpm
-        uses: pnpm/action-setup@v4
+        uses: pnpm/action-setup@v5
         with:
           version: 10
 
       - name: Setup Node
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v6
         with:
           node-version: 22
           cache: pnpm
@@ -155,13 +155,13 @@ jobs:
           mkdir -p cli-artifacts
           cp src-tauri/target/release/poster-maker-cli.exe cli-artifacts/poster-maker-cli-x86_64-pc-windows-msvc.exe
 
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: cli-x86_64-pc-windows-msvc
           path: cli-artifacts/*
           if-no-files-found: error
 
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: bundles-x86_64-pc-windows-msvc
           path: src-tauri/target/release/bundle/**/*
