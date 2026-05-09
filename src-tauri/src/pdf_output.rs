@@ -142,13 +142,6 @@ fn draw_guides(out: &mut String, dest: Rect, clip: Rect, base: Rect, col: u32, r
     if row < rows - 1 { draw_end_boxes(out, (dest.x0, bottom_y), (dest.x1, bottom_y), page_h); }
 }
 
-fn line_outer_points(a: (f64, f64), b: (f64, f64), offset: f64) -> ((f64, f64), (f64, f64)) {
-    let dx = b.0 - a.0;
-    let dy = b.1 - a.1;
-    let len = (dx * dx + dy * dy).sqrt().max(1.0);
-    ((a.0 - dx / len * offset, a.1 - dy / len * offset), (b.0 + dx / len * offset, b.1 + dy / len * offset))
-}
-
 fn draw_crop_line_with_boxes(out: &mut String, a: (f64, f64), b: (f64, f64), waste_dir: (f64, f64), page_h: f64) {
     // X boxes are alignment anchors: keep them exactly on the trim endpoints.
     // Do NOT extend along the line direction; extend short bleed ticks toward
