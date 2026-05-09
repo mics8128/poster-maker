@@ -46,10 +46,9 @@
   let customRows = 2;
 
   function gridChanged() {
-    if (grid.startsWith('Custom')) {
+    if (grid === 'Custom') {
       customCols = cols;
       customRows = rows;
-      grid = `Custom ${customCols}x${customRows}`;
       return;
     }
     const [c, r] = grid.split('/')[0].trim().split('x').map(Number);
@@ -62,7 +61,7 @@
     customRows = clampGrid(nextRows);
     cols = customCols;
     rows = customRows;
-    grid = `Custom ${customCols}x${customRows}`;
+    grid = 'Custom';
   }
 
   function adjustCustom(which: 'cols' | 'rows', delta: number) {
@@ -148,12 +147,9 @@
         <option>4x3 / 3x4</option>
         <option>4x4</option>
         <option>Custom</option>
-        {#if grid.startsWith('Custom ')}
-          <option>{grid}</option>
-        {/if}
       </select>
       <div class="muted">自動使用最佳擺放</div>
-      {#if grid.startsWith('Custom')}
+      {#if grid === 'Custom'}
         <div class="custom-grid">
           <div class="stepper">
             <div class="stepper-label">欄</div>
