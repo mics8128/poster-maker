@@ -42,36 +42,32 @@
   $: options = { cols, rows, overlapMm, marginMm, drawOuterMarks: true, drawCutGuides: true } satisfies PosterOptions;
   $: if (inputPath) refreshPreview(options, inputPath);
 
+  let customCols = 3;
+  let customRows = 2;
+
   function gridChanged() {
-    if (grid === 'Custom') {
-      const current = `${cols}x${rows}`;
-      const value = window.prompt('輸入自訂 A4 張數（欄x列），例如 5x3', current);
-      if (!value) {
-        grid = `${cols}x${rows}`;
-        return;
-      }
-      const match = value.trim().toLowerCase().replace('×', 'x').match(/^(\d+)\s*x\s*(\d+)$/);
-      if (!match) {
-        window.alert('格式錯誤，請輸入例如 5x3');
-        grid = `${cols}x${rows}`;
-        return;
-      }
-      const nextCols = Number(match[1]);
-      const nextRows = Number(match[2]);
-      if (nextCols < 1 || nextRows < 1 || nextCols > 12 || nextRows > 12) {
-        window.alert('欄列範圍請輸入 1–12');
-        grid = `${cols}x${rows}`;
-        return;
-      }
-      cols = nextCols;
-      rows = nextRows;
-      grid = `Custom ${cols}x${rows}`;
+    if (grid.startsWith('Custom')) {
+      cols = customCols;
+      rows = customRows;
       return;
     }
-    if (grid.startsWith('Custom ')) return;
     const [c, r] = grid.split('/')[0].trim().split('x').map(Number);
     cols = c;
     rows = r;
+  }
+
+  function customGridChanged() {
+    customCols = clampGrid(customCols);
+    customRows = clampGrid(customRows);
+    cols = customCols;
+    rows = customRows;
+    grid = `Custom ${customCols}x${customRows}`;
+  }
+
+  function clampGrid(value: number) {
+    const n = Number(value);
+    if (!Number.isFinite(n)) return 1;
+    return Math.max(1, Math.min(12, Math.round(n)));
   }
 
   async function pickInput() {
@@ -140,7 +136,7 @@
     <div class="field">
       <div class="label">A4 張數</div>
       <select bind:value={grid} on:change={gridChanged}>
-        <option>2x1</option>
+        <option>2x1 / 1x2</option>
         <option>2x2</option>
         <option>3x2 / 2x3</option>
         <option>3x3</option>
@@ -152,6 +148,12 @@
         {/if}
       </select>
       <div class="muted">自動使用最佳擺放</div>
+      {#if grid.startsWith('Custom')}
+        <div class="custom-grid">
+          <label>欄<input type="number" min="1" max="12" bind:value={customCols} on:input={customGridChanged} /></label>
+          <label>列<input type="number" min="1" max="12" bind:value={customRows} on:input={customGridChanged} /></label>
+        </div>
+      {/if}
     </div>
 
     <button class="primary" disabled={busy} on:click={generate}>產生海報 PDF</button>
