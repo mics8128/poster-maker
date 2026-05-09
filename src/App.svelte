@@ -3,15 +3,13 @@
   import { open, save } from '@tauri-apps/plugin-dialog';
 
   const version = '0.2.0-alpha.1';
+  const ptPerMm = 72 / 25.4;
 
   type PosterOptions = {
     cols: number;
     rows: number;
     overlapMm: number;
     marginMm: number;
-    imageDpi: number;
-    landscape: boolean;
-    autoLayout: boolean;
     drawOuterMarks: boolean;
     drawCutGuides: boolean;
   };
@@ -22,17 +20,12 @@
     landscape: boolean;
     pageWidthPt: number;
     pageHeightPt: number;
-    baseTileWidthPt: number;
-    baseTileHeightPt: number;
-    canvasWidthPt: number;
-    canvasHeightPt: number;
     imageWidthPt: number;
     imageHeightPt: number;
     imageWidthCm: number;
     imageHeightCm: number;
     paperWidthCm: number;
     paperHeightCm: number;
-    score: number;
   };
 
   let inputPath = '';
@@ -42,23 +35,15 @@
   let rows = 2;
   let overlapMm = 5;
   let marginMm = 3;
-  let imageDpi = 200;
-  let landscape = false;
-  let autoLayout = true;
-  let drawOuterMarks = true;
-  let drawCutGuides = true;
   let preview: PreviewInfo | null = null;
-  let status = '選圖片，按產生。v0.2 image-only prototype';
+  let status = '選圖片，按產生。';
   let busy = false;
-  let advancedOpen = false;
 
-  $: options = { cols, rows, overlapMm, marginMm, imageDpi, landscape, autoLayout, drawOuterMarks, drawCutGuides } satisfies PosterOptions;
+  $: options = { cols, rows, overlapMm, marginMm, drawOuterMarks: true, drawCutGuides: true } satisfies PosterOptions;
   $: if (inputPath) refreshPreview(options, inputPath);
 
   function gridChanged() {
-    if (grid === 'Custom') return;
-    const first = grid.split('/')[0].trim();
-    const [c, r] = first.split('x').map(Number);
+    const [c, r] = grid.split('/')[0].trim().split('x').map(Number);
     cols = c;
     rows = r;
   }
@@ -135,28 +120,13 @@
         <option>3x3</option>
         <option>4x3 / 3x4</option>
         <option>4x4</option>
-        <option>Custom</option>
       </select>
-      <label class="check"><input type="checkbox" bind:checked={autoLayout} />最佳擺放</label>
+      <div class="muted">自動使用最佳擺放</div>
     </div>
-
-    <details class="advanced" bind:open={advancedOpen}>
-      <summary>進階</summary>
-      <div class="grid2">
-        <label>欄<input type="number" min="1" bind:value={cols} /></label>
-        <label>列<input type="number" min="1" bind:value={rows} /></label>
-        <label>重疊 mm<input type="number" min="0" bind:value={overlapMm} /></label>
-        <label>邊界 mm<input type="number" min="0" bind:value={marginMm} /></label>
-        <label>DPI<input type="number" min="72" bind:value={imageDpi} /></label>
-      </div>
-      <label class="check"><input type="checkbox" bind:checked={landscape} />強制 A4 橫向（關閉最佳擺放時）</label>
-      <label class="check"><input type="checkbox" bind:checked={drawOuterMarks} />淡黑外框裁切輔助</label>
-      <label class="check"><input type="checkbox" bind:checked={drawCutGuides} />紅色裁切線與 X 框</label>
-    </details>
 
     <button class="primary" disabled={busy} on:click={generate}>產生海報 PDF</button>
     <div class="status">{status}</div>
-    <div class="muted">v{version} image-only prototype；PDF 輸入預計第二階段加 PDFium。</div>
+    <div class="muted">image-only prototype；PDF 輸入預計第二階段加 PDFium。</div>
   </aside>
 
   <main class="panel preview-panel">
@@ -168,7 +138,7 @@
           {#each Array(preview.cols) as _, c}
             {#each Array(preview.rows) as _, r}
               <rect x={c * preview.pageWidthPt} y={r * preview.pageHeightPt} width={preview.pageWidthPt} height={preview.pageHeightPt} fill="none" stroke="#111" stroke-width="1" />
-              <rect x={c * preview.pageWidthPt + marginMm * 72 / 25.4} y={r * preview.pageHeightPt + marginMm * 72 / 25.4} width={preview.pageWidthPt - marginMm * 2 * 72 / 25.4} height={preview.pageHeightPt - marginMm * 2 * 72 / 25.4} fill="none" stroke="#999" stroke-dasharray="4 4" stroke-width="1" />
+              <rect x={c * preview.pageWidthPt + marginMm * ptPerMm} y={r * preview.pageHeightPt + marginMm * ptPerMm} width={preview.pageWidthPt - marginMm * 2 * ptPerMm} height={preview.pageHeightPt - marginMm * 2 * ptPerMm} fill="none" stroke="#999" stroke-dasharray="4 4" stroke-width="1" />
             {/each}
           {/each}
           {#each Array(preview.cols - 1) as _, c}

@@ -1,5 +1,7 @@
 use serde::{Deserialize, Serialize};
 
+// Image pixels are treated as abstract source units for aspect-ratio/layout.
+// Physical output size is determined only by A4 layout, margin, and overlap.
 const A4_WIDTH_PT: f64 = 595.2755905512;
 const A4_HEIGHT_PT: f64 = 841.8897637795;
 const MM_TO_PT: f64 = 72.0 / 25.4;
@@ -11,9 +13,6 @@ pub struct PosterOptions {
     pub rows: u32,
     pub overlap_mm: f64,
     pub margin_mm: f64,
-    pub image_dpi: f64,
-    pub landscape: bool,
-    pub auto_layout: bool,
     pub draw_outer_marks: bool,
     pub draw_cut_guides: bool,
 }
@@ -102,17 +101,17 @@ pub fn resolve_layout(src_w_px: u32, src_h_px: u32, options: &PosterOptions) -> 
     if options.cols == 0 || options.rows == 0 {
         return Err("Rows/cols must be >= 1".into());
     }
-    if options.overlap_mm < 0.0 || options.margin_mm < 0.0 || options.image_dpi <= 0.0 {
-        return Err("Invalid margin/overlap/DPI".into());
+    if options.overlap_mm < 0.0 || options.margin_mm < 0.0 {
+        return Err("Invalid margin/overlap".into());
     }
-    let src_w_pt = src_w_px as f64 / options.image_dpi * 72.0;
-    let src_h_pt = src_h_px as f64 / options.image_dpi * 72.0;
+    let src_w_pt = src_w_px as f64;
+    let src_h_pt = src_h_px as f64;
     let src_ratio = src_w_pt / src_h_pt;
     let mut grids = vec![(options.cols, options.rows)];
-    if options.auto_layout && options.cols != options.rows {
+    if options.cols != options.rows {
         grids.push((options.rows, options.cols));
     }
-    let landscapes: Vec<bool> = if options.auto_layout { vec![false, true] } else { vec![options.landscape] };
+    let landscapes: Vec<bool> = vec![false, true];
     let mut best: Option<PreviewInfo> = None;
     for (cols, rows) in grids {
         for &landscape in &landscapes {
@@ -140,7 +139,7 @@ mod tests {
     use super::*;
 
     fn opts(cols: u32, rows: u32) -> PosterOptions {
-        PosterOptions { cols, rows, overlap_mm: 5.0, margin_mm: 3.0, image_dpi: 200.0, landscape: false, auto_layout: true, draw_outer_marks: true, draw_cut_guides: true }
+        PosterOptions { cols, rows, overlap_mm: 5.0, margin_mm: 3.0, draw_outer_marks: true, draw_cut_guides: true }
     }
 
     #[test]
