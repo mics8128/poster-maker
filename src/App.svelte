@@ -10,6 +10,7 @@
     rows: number;
     overlapMm: number;
     marginMm: number;
+    drawOuterMarks: boolean;
     drawCutGuides: boolean;
   };
 
@@ -38,7 +39,7 @@
   let status = '選圖片，按產生。';
   let busy = false;
 
-  $: options = { cols, rows, overlapMm, marginMm, drawCutGuides: true } satisfies PosterOptions;
+  $: options = { cols, rows, overlapMm, marginMm, drawOuterMarks: true, drawCutGuides: true } satisfies PosterOptions;
   $: if (inputPath) refreshPreview(options, inputPath);
 
   let customCols = 3;

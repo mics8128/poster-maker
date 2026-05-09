@@ -13,6 +13,7 @@ pub struct PosterOptions {
     pub rows: u32,
     pub overlap_mm: f64,
     pub margin_mm: f64,
+    pub draw_outer_marks: bool,
     pub draw_cut_guides: bool,
 }
 
@@ -138,7 +139,7 @@ mod tests {
     use super::*;
 
     fn opts(cols: u32, rows: u32) -> PosterOptions {
-        PosterOptions { cols, rows, overlap_mm: 5.0, margin_mm: 3.0, draw_cut_guides: true }
+        PosterOptions { cols, rows, overlap_mm: 5.0, margin_mm: 3.0, draw_outer_marks: true, draw_cut_guides: true }
     }
 
     #[test]

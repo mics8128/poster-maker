@@ -147,6 +147,9 @@ fn encode_tile_jpeg(image: &DynamicImage, x: u32, y: u32, w: u32, h: u32) -> Res
 fn build_page_content(tile: TileGeometry, row: u32, col: u32, options: &PosterOptions, preview: &PreviewInfo) -> String {
     let mut out = String::new();
     draw_image(&mut out, tile.dest_page, preview.page_height_pt);
+    if options.draw_outer_marks {
+        draw_outer_marks(&mut out, tile.dest_page, preview.page_height_pt);
+    }
     if options.draw_cut_guides {
         let guides = guide_geometry(tile);
         draw_cut_and_alignment_guides(&mut out, tile.dest_page, guides, row, col, preview, preview.page_height_pt);
@@ -169,11 +172,19 @@ fn guide_geometry(tile: TileGeometry) -> GuideGeometry {
 // Guide/line drawing only. These functions must not change tile/grid geometry.
 // -----------------------------------------------------------------------------
 
-fn draw_cut_and_alignment_guides(out: &mut String, dest: Rect, guides: GuideGeometry, _row: u32, _col: u32, _preview: &PreviewInfo, page_h: f64) {
-    draw_crop_line_with_boxes(out, Point { x: guides.left_x, y: dest.y0 }, Point { x: guides.left_x, y: dest.y1 }, page_h);
-    draw_crop_line_with_boxes(out, Point { x: guides.right_x, y: dest.y0 }, Point { x: guides.right_x, y: dest.y1 }, page_h);
-    draw_crop_line_with_boxes(out, Point { x: dest.x0, y: guides.top_y }, Point { x: dest.x1, y: guides.top_y }, page_h);
-    draw_crop_line_with_boxes(out, Point { x: dest.x0, y: guides.bottom_y }, Point { x: dest.x1, y: guides.bottom_y }, page_h);
+fn draw_cut_and_alignment_guides(out: &mut String, dest: Rect, guides: GuideGeometry, row: u32, col: u32, preview: &PreviewInfo, page_h: f64) {
+    if col > 0 {
+        draw_crop_line_with_boxes(out, Point { x: guides.left_x, y: dest.y0 }, Point { x: guides.left_x, y: dest.y1 }, page_h);
+    }
+    if row > 0 {
+        draw_crop_line_with_boxes(out, Point { x: dest.x0, y: guides.top_y }, Point { x: dest.x1, y: guides.top_y }, page_h);
+    }
+    if col < preview.cols - 1 {
+        draw_marker_boxes(out, Point { x: guides.right_x, y: dest.y0 }, Point { x: guides.right_x, y: dest.y1 }, page_h);
+    }
+    if row < preview.rows - 1 {
+        draw_marker_boxes(out, Point { x: dest.x0, y: guides.bottom_y }, Point { x: dest.x1, y: guides.bottom_y }, page_h);
+    }
 }
 
 fn draw_crop_line_with_boxes(out: &mut String, a: Point, b: Point, page_h: f64) {
@@ -206,6 +217,25 @@ fn draw_contrast_line(out: &mut String, a: Point, b: Point, page_h: f64) {
     draw_line(out, a, b, page_h);
 }
 
+fn draw_outer_marks(out: &mut String, dest: Rect, page_h: f64) {
+    set_stroke(out, 0.65, 0.65, 0.65, 0.35, Some("[3 3] 0"));
+    draw_rect(out, dest, page_h);
+    let mark = 10.0;
+    let gap = 2.0;
+    for (a, b) in [
+        (Point { x: dest.x0 - mark, y: dest.y0 }, Point { x: dest.x0 - gap, y: dest.y0 }),
+        (Point { x: dest.x0, y: dest.y0 - mark }, Point { x: dest.x0, y: dest.y0 - gap }),
+        (Point { x: dest.x1 + gap, y: dest.y0 }, Point { x: dest.x1 + mark, y: dest.y0 }),
+        (Point { x: dest.x1, y: dest.y0 - mark }, Point { x: dest.x1, y: dest.y0 - gap }),
+        (Point { x: dest.x0 - mark, y: dest.y1 }, Point { x: dest.x0 - gap, y: dest.y1 }),
+        (Point { x: dest.x0, y: dest.y1 + gap }, Point { x: dest.x0, y: dest.y1 + mark }),
+        (Point { x: dest.x1 + gap, y: dest.y1 }, Point { x: dest.x1 + mark, y: dest.y1 }),
+        (Point { x: dest.x1, y: dest.y1 + gap }, Point { x: dest.x1, y: dest.y1 + mark }),
+    ] {
+        draw_line(out, a, b, page_h);
+    }
+}
+
 fn set_stroke(out: &mut String, r: f64, g: f64, b: f64, width: f64, dash: Option<&str>) {
     out.push_str(&format!("{:.3} {:.3} {:.3} RG\n{:.3} w\n", r, g, b, width));
     if let Some(d) = dash { out.push_str(&format!("{} d\n", d)); } else { out.push_str("[] 0 d\n"); }
@@ -213,6 +243,10 @@ fn set_stroke(out: &mut String, r: f64, g: f64, b: f64, width: f64, dash: Option
 
 fn draw_line(out: &mut String, a: Point, b: Point, page_h: f64) {
     out.push_str(&format!("{:.3} {:.3} m {:.3} {:.3} l S\n", a.x, page_h - a.y, b.x, page_h - b.y));
+}
+
+fn draw_rect(out: &mut String, r: Rect, page_h: f64) {
+    out.push_str(&format!("{:.3} {:.3} {:.3} {:.3} re S\n", r.x0, pdf_y(r.y0, r.height(), page_h), r.width(), r.height()));
 }
 
 fn draw_image(out: &mut String, dest: Rect, page_h: f64) {
