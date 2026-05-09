@@ -173,25 +173,28 @@ fn guide_geometry(tile: TileGeometry) -> GuideGeometry {
 
 fn draw_cut_and_alignment_guides(out: &mut String, dest: Rect, guides: GuideGeometry, row: u32, col: u32, preview: &PreviewInfo, page_h: f64) {
     if col > 0 {
-        draw_crop_line_with_boxes(out, Point { x: guides.left_x, y: dest.y0 }, Point { x: guides.left_x, y: dest.y1 }, page_h);
+        draw_crop_line_with_boxes(out, Point { x: guides.left_x, y: dest.y0 }, Point { x: guides.left_x, y: dest.y1 }, Point { x: -1.0, y: 0.0 }, page_h);
     }
     if row > 0 {
-        draw_crop_line_with_boxes(out, Point { x: dest.x0, y: guides.top_y }, Point { x: dest.x1, y: guides.top_y }, page_h);
+        draw_crop_line_with_boxes(out, Point { x: dest.x0, y: guides.top_y }, Point { x: dest.x1, y: guides.top_y }, Point { x: 0.0, y: -1.0 }, page_h);
     }
     if col < preview.cols - 1 {
-        draw_marker_boxes(out, Point { x: guides.right_x, y: dest.y0 }, Point { x: guides.right_x, y: dest.y1 }, page_h);
+        draw_marker_boxes(out, Point { x: guides.right_x, y: dest.y0 }, Point { x: guides.right_x, y: dest.y1 }, Point { x: 1.0, y: 0.0 }, page_h);
     }
     if row < preview.rows - 1 {
-        draw_marker_boxes(out, Point { x: dest.x0, y: guides.bottom_y }, Point { x: dest.x1, y: guides.bottom_y }, page_h);
+        draw_marker_boxes(out, Point { x: dest.x0, y: guides.bottom_y }, Point { x: dest.x1, y: guides.bottom_y }, Point { x: 0.0, y: 1.0 }, page_h);
     }
 }
 
-fn draw_crop_line_with_boxes(out: &mut String, a: Point, b: Point, page_h: f64) {
+fn draw_crop_line_with_boxes(out: &mut String, a: Point, b: Point, marker_dir: Point, page_h: f64) {
     draw_contrast_line(out, a, b, page_h);
-    draw_marker_boxes(out, a, b, page_h);
+    draw_marker_boxes(out, a, b, marker_dir, page_h);
 }
 
-fn draw_marker_boxes(out: &mut String, a: Point, b: Point, page_h: f64) {
+fn draw_marker_boxes(out: &mut String, a: Point, b: Point, marker_dir: Point, page_h: f64) {
+    let offset = 2.0;
+    let a = Point { x: a.x + marker_dir.x * offset, y: a.y + marker_dir.y * offset };
+    let b = Point { x: b.x + marker_dir.x * offset, y: b.y + marker_dir.y * offset };
     draw_x_box(out, a, MARKER_SIZE_PT, page_h);
     draw_x_box(out, b, MARKER_SIZE_PT, page_h);
 }
