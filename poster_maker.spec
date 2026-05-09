@@ -15,7 +15,7 @@ for package in ("PySide6", "fitz", "PIL"):
 
 
 a = Analysis(
-    ["src/poster_maker/app.py"],
+    ["packaging/poster_maker_gui.py"],
     pathex=[],
     binaries=binaries,
     datas=datas,
