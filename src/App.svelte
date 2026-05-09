@@ -40,8 +40,8 @@
   let grid = '3x2 / 2x3';
   let cols = 3;
   let rows = 2;
-  let overlapMm = 10;
-  let marginMm = 8;
+  let overlapMm = 5;
+  let marginMm = 3;
   let imageDpi = 200;
   let landscape = false;
   let autoLayout = true;

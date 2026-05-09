@@ -140,7 +140,7 @@ mod tests {
     use super::*;
 
     fn opts(cols: u32, rows: u32) -> PosterOptions {
-        PosterOptions { cols, rows, overlap_mm: 10.0, margin_mm: 8.0, image_dpi: 200.0, landscape: false, auto_layout: true, draw_outer_marks: true, draw_cut_guides: true }
+        PosterOptions { cols, rows, overlap_mm: 5.0, margin_mm: 3.0, image_dpi: 200.0, landscape: false, auto_layout: true, draw_outer_marks: true, draw_cut_guides: true }
     }
 
     #[test]
