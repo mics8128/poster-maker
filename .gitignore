@@ -4,7 +4,9 @@ __pycache__/
 build/
 dist/
 node_modules/
+release/
 src-tauri/target/
+src-tauri/gen/
 # Keep PyInstaller specs tracked; ignore generated build/dist instead.
 .DS_Store
 .pytest_cache/

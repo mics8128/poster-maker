@@ -1,152 +1,106 @@
 # Poster Maker
 
-Poster Maker 是一個跨平台海報分割工具。把一張圖片或單頁 PDF 切成多張 A4，列印後可剪裁、重疊、拼貼成大海報。
+Poster Maker 是一個海報分割工具：選一張圖片，輸出多頁 A4 PDF，列印後裁切、重疊、拼貼成大海報。
 
-目前版本：**v0.1.1**
+目前主線是 **Rust + Tauri image-only alpha**。舊 Python 版保留在 `legacy/python-poster-maker/`。
 
-## 下載
+## 目前版本
 
-到 GitHub Releases 下載：
+- 最新 alpha：`v0.2.0-alpha.2`
+- 下載：https://github.com/mics8128/poster-maker/releases
 
-- macOS：`PosterMaker-0.1.1-macos.dmg`
-- Windows：`PosterMaker-0.1.1-windows-installer.exe` 或 `PosterMaker-0.1.1-windows.zip`
+目前 release 只提供：
 
-> macOS 第一次開啟若被 Gatekeeper 擋下，請在 Finder 對 App 按右鍵 → Open / 打開。
+- macOS Apple Silicon DMG
+- macOS Apple Silicon CLI
+
+暫不包含：
+
+- Windows build（等 Windows 本機驗證）
+- macOS Intel build
+- macOS notarization
+- PDF 輸入
 
 ## 功能
 
-- 支援來源：PDF、PNG、JPG、JPEG、WEBP、BMP、TIFF
+- 輸入圖片：PNG / JPG / JPEG / WEBP / BMP / TIFF
 - 輸出：多頁 A4 PDF
-- 常用張數：2x1、2x2、3x2 / 2x3、3x3、4x3 / 3x4、4x4
-- 最佳擺放：自動判斷 A4 直向/橫向與欄列方向
-  - 例如 `3x2` 與 `2x3` 會視為同一個 6 張 A4 需求，自動選最佳結果
-- 預覽：顯示 A4 分頁、接縫、重疊範圍
-- 尺寸估算：顯示成品圖面長寬與 A4 總外框，單位公分
-- 剪裁/拼貼輔助：
-  - 淡黑色外框裁切輔助線
-  - 紅色內部裁切線，可蓋在圖片上
-  - 裁切線與對齊位置末端有紅色「框框 + X」
-  - 預設不輸出文字標籤，避免干擾圖片
+- A4 張數：2x1 / 1x2、2x2、3x2 / 2x3、3x3、4x3 / 3x4、4x4、自訂
+- 自動最佳擺放：自動判斷欄列反向與 A4 直/橫向
+- 預覽：顯示實際切片圖片、A4 頁面、裁切線、X 對齊框
+- 預設：重疊 5mm，邊界 3mm
+- 輸出檔名只填檔名，預設存在來源圖片同資料夾
+- 覆蓋既有 PDF 前會警告
 
-## 使用方式
+## GUI 開發執行
 
-1. 開啟 Poster Maker
-2. 選擇來源圖片或 PDF
-3. 選擇輸出 PDF 位置
-4. 選 A4 張數，例如 `3x2 / 2x3`
-5. 保持「最佳擺放」開啟
-6. 按「產生海報 PDF」
-7. 用一般 PDF 軟體列印，列印時請選：
-   - 紙張：A4
-   - 縮放：實際大小 / 100%
-   - 不要使用「符合頁面」或「縮小到可列印範圍」
+```bash
+pnpm install
+pnpm tauri dev
+```
 
-## 預設建議參數
+如果 dev server 卡住：
 
-一般情況使用預設即可：
-
-- 最佳擺放：開
-- 重疊區：10 mm
-- 邊界：8 mm
-- 圖片 DPI：200
-- 淡黑外框裁切輔助：開
-- 紅色裁切線與 X 框：開
-- 頁面文字標籤：關
-
-進階選項預設隱藏，需要時可展開「進階」。
+```bash
+pkill -f "tauri dev" || true
+pkill -f "target/debug/poster-maker" || true
+pkill -f "vite --host 127.0.0.1" || true
+pnpm tauri dev
+```
 
 ## CLI
 
-安裝開發版後可使用 CLI：
+```bash
+cd src-tauri
+cargo run --bin poster-maker-cli -- /path/to/image.jpg
+```
+
+指定張數：
 
 ```bash
-poster-maker-cli input.pdf output.pdf --grid 3x2
-poster-maker-cli photo.jpg poster.pdf --grid 2x2 --overlap-mm 10 --margin-mm 8
-poster-maker-cli input.pdf output.pdf --grid 2x3 --no-auto-layout
-poster-maker-cli input.pdf output.pdf --grid 2x2 --labels
+cargo run --bin poster-maker-cli -- /path/to/image.jpg --grid 3x2
 ```
 
-常用參數：
-
-- `--grid 3x2`：A4 欄列數。預設會自動嘗試反向欄列取得最佳擺放。
-- `--no-auto-layout`：不要自動交換欄列。
-- `--overlap-mm 10`：重疊區大小。
-- `--margin-mm 8`：頁面邊界。
-- `--landscape`：關閉最佳擺放時可強制 A4 橫向。
-- `--labels`：輸出頁面文字標籤。
-
-## 開發執行
-
-macOS / Linux：
+指定輸出檔名並覆蓋：
 
 ```bash
-python3 -m venv .venv
-source .venv/bin/activate
-pip install -e .
-poster-maker
+cargo run --bin poster-maker-cli -- /path/to/image.jpg --grid 3x2 -o output.pdf --overwrite
 ```
 
-Windows PowerShell：
+CLI 預設輸出到來源圖片同一個資料夾。
 
-```powershell
-python -m venv .venv
-.\.venv\Scripts\Activate.ps1
-pip install -e .
-poster-maker
-```
-
-## 本機打包
-
-macOS DMG：
+## Build
 
 ```bash
-VERSION=0.1.1 bash scripts/build_macos_dmg.sh
+pnpm build
+cd src-tauri && cargo test
+pnpm tauri build --target aarch64-apple-darwin
 ```
 
-輸出：
+## Version / release notes
+
+版本號集中在 `package.json`。
+
+同步到 Tauri / Cargo：
+
+```bash
+pnpm sync-version
+cargo update --manifest-path src-tauri/Cargo.toml -p poster-maker
+```
+
+目前 macOS alpha DMG 需要本機重包以保留 Applications 捷徑與 ad-hoc signing。正式公開版需要 Apple notarization。
+
+## Repo structure
 
 ```text
-release/PosterMaker-0.1.1-macos.dmg
+src/                         Svelte GUI
+src-tauri/src/layout.rs      layout / best fit
+src-tauri/src/pdf_output.rs  shared preview/PDF geometry + minimal PDF writer
+src-tauri/src/cli.rs         CLI entrypoint
+legacy/python-poster-maker/  old Python implementation
+REVIEW.md                    current limitations / next steps
 ```
 
-Windows ZIP / Installer：
+## Known limitations
 
-```powershell
-$env:VERSION="0.1.1"
-.\scripts\build_windows.ps1
-```
-
-輸出：
-
-```text
-release/PosterMaker-0.1.1-windows.zip
-release/PosterMaker-0.1.1-windows-installer.exe
-```
-
-Installer 需要 Inno Setup；若沒有 Inno Setup，仍會產生 ZIP。
-
-## GitHub Release / CI
-
-此專案使用 GitHub Actions 在 tag 發布時自動打包 macOS 與 Windows。
-
-發布 v0.1.1：
-
-```bash
-git tag v0.1.1
-git push origin master --tags
-```
-
-CI 會產生並上傳：
-
-- `PosterMaker-0.1.1-macos.dmg`
-- `PosterMaker-0.1.1-windows.zip`
-- `PosterMaker-0.1.1-windows-installer.exe`
-
-也可在 GitHub Actions 手動執行 `Release` workflow，輸入版本 `v0.1.1`。
-
-## 技術
-
-- Python 3.10+
-- PySide6：GUI
-- PyMuPDF：PDF 讀寫與裁切
-- PyInstaller：桌面 App 打包
+見 `REVIEW.md`。

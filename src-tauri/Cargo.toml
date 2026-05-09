@@ -8,7 +8,7 @@ default-run = "poster-maker"
 
 [lib]
 name = "poster_maker_lib"
-crate-type = ["staticlib", "cdylib", "rlib"]
+crate-type = ["cdylib", "rlib"]
 
 [[bin]]
 name = "poster-maker-cli"
