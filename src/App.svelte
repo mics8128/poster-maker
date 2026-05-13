@@ -21,7 +21,7 @@
   type Rect = { x0: number; y0: number; x1: number; y1: number };
   type Point = { x: number; y: number };
   type LineGeometry = { a: Point; b: Point };
-  type MarkerGeometry = { center: Point; size: number };
+  type MarkerGeometry = { rect: Rect };
   type PreviewPageGeometry = {
     row: number;
     col: number;
@@ -264,17 +264,16 @@
               <image href={previewImageSrc} x={previewGeometry.imageCanvas.x0} y={previewGeometry.imageCanvas.y0} width={preview.imageWidthPt} height={preview.imageHeightPt} preserveAspectRatio="none" />
             </svg>
             {#each page.outerLines as line}
-              <line x1={page.col * preview.pageWidthPt + line.a.x} y1={page.row * preview.pageHeightPt + line.a.y} x2={page.col * preview.pageWidthPt + line.b.x} y2={page.row * preview.pageHeightPt + line.b.y} stroke="black" stroke-opacity="0.5" stroke-dasharray="3 3" stroke-width="0.5" />
+              <line x1={page.col * preview.pageWidthPt + line.a.x} y1={page.row * preview.pageHeightPt + line.a.y} x2={page.col * preview.pageWidthPt + line.b.x} y2={page.row * preview.pageHeightPt + line.b.y} stroke="#8c8c8c" stroke-opacity="0.5" stroke-dasharray="3 3" stroke-width="0.5" />
             {/each}
             {#each page.cutLines as line}
-              <line x1={page.col * preview.pageWidthPt + line.a.x} y1={page.row * preview.pageHeightPt + line.a.y} x2={page.col * preview.pageWidthPt + line.b.x} y2={page.row * preview.pageHeightPt + line.b.y} stroke="white" stroke-dasharray="7 3" stroke-width="2" />
-              <line x1={page.col * preview.pageWidthPt + line.a.x} y1={page.row * preview.pageHeightPt + line.a.y} x2={page.col * preview.pageWidthPt + line.b.x} y2={page.row * preview.pageHeightPt + line.b.y} stroke="black" stroke-opacity="0.6" stroke-dasharray="7 3" stroke-width="1" />
+              <line x1={page.col * preview.pageWidthPt + line.a.x} y1={page.row * preview.pageHeightPt + line.a.y} x2={page.col * preview.pageWidthPt + line.b.x} y2={page.row * preview.pageHeightPt + line.b.y} stroke="#737373" stroke-opacity="0.65" stroke-dasharray="7 3" stroke-width="0.9" />
             {/each}
             {#each page.markers as marker}
-              <g transform={`translate(${page.col * preview.pageWidthPt + marker.center.x} ${page.row * preview.pageHeightPt + marker.center.y})`} stroke="black" stroke-width="1.1" fill="none">
-                <rect x={-marker.size / 2} y={-marker.size / 2} width={marker.size} height={marker.size} />
-                <line x1={-marker.size / 2} y1={-marker.size / 2} x2={marker.size / 2} y2={marker.size / 2} />
-                <line x1={-marker.size / 2} y1={marker.size / 2} x2={marker.size / 2} y2={-marker.size / 2} />
+              <g stroke="#737373" stroke-opacity="0.65" stroke-width="0.8" fill="none">
+                <rect x={page.col * preview.pageWidthPt + marker.rect.x0} y={page.row * preview.pageHeightPt + marker.rect.y0} width={marker.rect.x1 - marker.rect.x0} height={marker.rect.y1 - marker.rect.y0} />
+                <line x1={page.col * preview.pageWidthPt + marker.rect.x0} y1={page.row * preview.pageHeightPt + marker.rect.y0} x2={page.col * preview.pageWidthPt + marker.rect.x1} y2={page.row * preview.pageHeightPt + marker.rect.y1} />
+                <line x1={page.col * preview.pageWidthPt + marker.rect.x0} y1={page.row * preview.pageHeightPt + marker.rect.y1} x2={page.col * preview.pageWidthPt + marker.rect.x1} y2={page.row * preview.pageHeightPt + marker.rect.y0} />
               </g>
             {/each}
           {/each}

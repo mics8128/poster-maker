@@ -4,6 +4,7 @@ use serde::Serialize;
 
 const MARKER_SIZE_PT: f64 = 12.0;
 const MARKER_GAP_PT: f64 = 2.0;
+const CUT_GUIDE_SAFE_FRACTION: f64 = 0.2;
 
 #[derive(Debug, Clone, Copy, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -22,8 +23,12 @@ pub struct Rect {
 }
 
 impl Rect {
-    fn width(self) -> f64 { self.x1 - self.x0 }
-    fn height(self) -> f64 { self.y1 - self.y0 }
+    fn width(self) -> f64 {
+        self.x1 - self.x0
+    }
+    fn height(self) -> f64 {
+        self.y1 - self.y0
+    }
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -52,8 +57,7 @@ pub struct LineGeometry {
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct MarkerGeometry {
-    pub center: Point,
-    pub size: f64,
+    pub rect: Rect,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -83,13 +87,22 @@ struct PageChunk {
     image_h: u32,
 }
 
-pub fn generate(image: &DynamicImage, output: &str, options: &PosterOptions, preview: &PreviewInfo) -> Result<(), String> {
+pub fn generate(
+    image: &DynamicImage,
+    output: &str,
+    options: &PosterOptions,
+    preview: &PreviewInfo,
+) -> Result<(), String> {
     let pages = build_pages(image, options, preview)?;
     let pdf = write_pdf(preview.page_width_pt, preview.page_height_pt, &pages);
     std::fs::write(output, pdf).map_err(|e| e.to_string())
 }
 
-fn build_pages(image: &DynamicImage, options: &PosterOptions, preview: &PreviewInfo) -> Result<Vec<PageChunk>, String> {
+fn build_pages(
+    image: &DynamicImage,
+    options: &PosterOptions,
+    preview: &PreviewInfo,
+) -> Result<Vec<PageChunk>, String> {
     let image_canvas = image_fit_canvas_size(image.width() as f64, image.height() as f64, preview);
     let mut pages = Vec::new();
 
@@ -97,10 +110,20 @@ fn build_pages(image: &DynamicImage, options: &PosterOptions, preview: &PreviewI
         for col in 0..preview.cols {
             let tile = tile_geometry(row, col, preview, options, image_canvas)?;
             let page = page_geometry(tile, row, col, options, preview);
-            let (sx, sy, sw, sh) = canvas_to_source_crop(tile.clip_canvas, image_canvas, image.width(), image.height());
+            let (sx, sy, sw, sh) = canvas_to_source_crop(
+                tile.clip_canvas,
+                image_canvas,
+                image.width(),
+                image.height(),
+            );
             let jpeg = encode_tile_jpeg(image, sx, sy, sw, sh)?;
             let content = build_page_content(&page, preview);
-            pages.push(PageChunk { content, image: jpeg, image_w: sw, image_h: sh });
+            pages.push(PageChunk {
+                content,
+                image: jpeg,
+                image_w: sw,
+                image_h: sh,
+            });
         }
     }
 
@@ -111,7 +134,12 @@ fn build_pages(image: &DynamicImage, options: &PosterOptions, preview: &PreviewI
 // Shared tile/guide geometry. PDF output and GUI preview both use this data.
 // -----------------------------------------------------------------------------
 
-pub fn preview_geometry_for_image_size(image_w: u32, image_h: u32, options: &PosterOptions, preview: &PreviewInfo) -> Result<PreviewGeometry, String> {
+pub fn preview_geometry_for_image_size(
+    image_w: u32,
+    image_h: u32,
+    options: &PosterOptions,
+    preview: &PreviewInfo,
+) -> Result<PreviewGeometry, String> {
     let image_canvas = image_fit_canvas_size(image_w as f64, image_h as f64, preview);
     let mut pages = Vec::new();
     for row in 0..preview.rows {
@@ -120,37 +148,88 @@ pub fn preview_geometry_for_image_size(image_w: u32, image_h: u32, options: &Pos
             pages.push(page_geometry(tile, row, col, options, preview));
         }
     }
-    Ok(PreviewGeometry { image_canvas, pages })
+    Ok(PreviewGeometry {
+        image_canvas,
+        pages,
+    })
 }
 
-fn page_geometry(tile: TileGeometry, row: u32, col: u32, options: &PosterOptions, preview: &PreviewInfo) -> PreviewPageGeometry {
+fn page_geometry(
+    tile: TileGeometry,
+    row: u32,
+    col: u32,
+    options: &PosterOptions,
+    preview: &PreviewInfo,
+) -> PreviewPageGeometry {
     let guides = guide_geometry(tile);
     let mut outer_lines = Vec::new();
     let mut cut_lines = Vec::new();
     let mut markers = Vec::new();
 
     if options.draw_outer_marks {
-        outer_lines.extend(outer_mark_lines(tile.dest_page, preview.page_width_pt, preview.page_height_pt));
+        outer_lines.extend(outer_mark_lines(
+            tile.dest_page,
+            preview.page_width_pt,
+            preview.page_height_pt,
+        ));
     }
 
     if options.draw_cut_guides {
         if col > 0 {
-            let line = LineGeometry { a: Point { x: guides.left_x, y: tile.dest_page.y0 }, b: Point { x: guides.left_x, y: tile.dest_page.y1 } };
-            markers.extend(line_markers(&line));
+            let x = cut_guide_position(tile.dest_page.x0, guides.left_x);
+            let line = LineGeometry {
+                a: Point {
+                    x,
+                    y: tile.dest_page.y0,
+                },
+                b: Point {
+                    x,
+                    y: tile.dest_page.y1,
+                },
+            };
+            markers.extend(vertical_alignment_frames(
+                tile.dest_page.x0,
+                guides.left_x,
+                tile.dest_page.y0,
+                tile.dest_page.y1,
+            ));
             cut_lines.push(line);
         }
         if row > 0 {
-            let line = LineGeometry { a: Point { x: tile.dest_page.x0, y: guides.top_y }, b: Point { x: tile.dest_page.x1, y: guides.top_y } };
-            markers.extend(line_markers(&line));
+            let y = cut_guide_position(tile.dest_page.y0, guides.top_y);
+            let line = LineGeometry {
+                a: Point {
+                    x: tile.dest_page.x0,
+                    y,
+                },
+                b: Point {
+                    x: tile.dest_page.x1,
+                    y,
+                },
+            };
+            markers.extend(horizontal_alignment_frames(
+                tile.dest_page.x0,
+                tile.dest_page.x1,
+                tile.dest_page.y0,
+                guides.top_y,
+            ));
             cut_lines.push(line);
         }
         if col < preview.cols - 1 {
-            let line = LineGeometry { a: Point { x: guides.right_x, y: tile.dest_page.y0 }, b: Point { x: guides.right_x, y: tile.dest_page.y1 } };
-            markers.extend(line_markers(&line));
+            markers.extend(vertical_alignment_frames(
+                guides.right_x,
+                tile.dest_page.x1,
+                tile.dest_page.y0,
+                tile.dest_page.y1,
+            ));
         }
         if row < preview.rows - 1 {
-            let line = LineGeometry { a: Point { x: tile.dest_page.x0, y: guides.bottom_y }, b: Point { x: tile.dest_page.x1, y: guides.bottom_y } };
-            markers.extend(line_markers(&line));
+            markers.extend(horizontal_alignment_frames(
+                tile.dest_page.x0,
+                tile.dest_page.x1,
+                guides.bottom_y,
+                tile.dest_page.y1,
+            ));
         }
     }
 
@@ -170,11 +249,22 @@ fn image_fit_canvas_size(image_w: f64, image_h: f64, preview: &PreviewInfo) -> R
     fit_rect(
         image_w,
         image_h,
-        Rect { x0: 0.0, y0: 0.0, x1: preview.canvas_width_pt, y1: preview.canvas_height_pt },
+        Rect {
+            x0: 0.0,
+            y0: 0.0,
+            x1: preview.canvas_width_pt,
+            y1: preview.canvas_height_pt,
+        },
     )
 }
 
-fn tile_geometry(row: u32, col: u32, preview: &PreviewInfo, options: &PosterOptions, image_canvas: Rect) -> Result<TileGeometry, String> {
+fn tile_geometry(
+    row: u32,
+    col: u32,
+    preview: &PreviewInfo,
+    options: &PosterOptions,
+    image_canvas: Rect,
+) -> Result<TileGeometry, String> {
     let overlap = mm(options.overlap_mm);
     let base = Rect {
         x0: col as f64 * preview.base_tile_width_pt,
@@ -200,11 +290,19 @@ fn tile_geometry(row: u32, col: u32, preview: &PreviewInfo, options: &PosterOpti
         x1: (page_w + clip.width()) / 2.0,
         y1: (page_h + clip.height()) / 2.0,
     };
-    Ok(TileGeometry { base_canvas: base, clip_canvas: clip, dest_page: dest })
+    Ok(TileGeometry {
+        base_canvas: base,
+        clip_canvas: clip,
+        dest_page: dest,
+    })
 }
 
 fn overlap_if(condition: bool, overlap: f64) -> f64 {
-    if condition { overlap } else { 0.0 }
+    if condition {
+        overlap
+    } else {
+        0.0
+    }
 }
 
 fn fit_rect(src_w: f64, src_h: f64, canvas: Rect) -> Rect {
@@ -213,7 +311,12 @@ fn fit_rect(src_w: f64, src_h: f64, canvas: Rect) -> Rect {
     let h = src_h * scale;
     let x0 = canvas.x0 + (canvas.width() - w) / 2.0;
     let y0 = canvas.y0 + (canvas.height() - h) / 2.0;
-    Rect { x0, y0, x1: x0 + w, y1: y0 + h }
+    Rect {
+        x0,
+        y0,
+        x1: x0 + w,
+        y1: y0 + h,
+    }
 }
 
 fn guide_geometry(tile: TileGeometry) -> GuideGeometry {
@@ -229,40 +332,120 @@ fn guide_geometry(tile: TileGeometry) -> GuideGeometry {
 
 fn outer_mark_lines(dest: Rect, page_w: f64, page_h: f64) -> [LineGeometry; 4] {
     [
-        LineGeometry { a: Point { x: 0.0, y: dest.y0 }, b: Point { x: page_w, y: dest.y0 } },
-        LineGeometry { a: Point { x: dest.x1, y: 0.0 }, b: Point { x: dest.x1, y: page_h } },
-        LineGeometry { a: Point { x: page_w, y: dest.y1 }, b: Point { x: 0.0, y: dest.y1 } },
-        LineGeometry { a: Point { x: dest.x0, y: page_h }, b: Point { x: dest.x0, y: 0.0 } },
+        LineGeometry {
+            a: Point { x: 0.0, y: dest.y0 },
+            b: Point {
+                x: page_w,
+                y: dest.y0,
+            },
+        },
+        LineGeometry {
+            a: Point { x: dest.x1, y: 0.0 },
+            b: Point {
+                x: dest.x1,
+                y: page_h,
+            },
+        },
+        LineGeometry {
+            a: Point {
+                x: page_w,
+                y: dest.y1,
+            },
+            b: Point { x: 0.0, y: dest.y1 },
+        },
+        LineGeometry {
+            a: Point {
+                x: dest.x0,
+                y: page_h,
+            },
+            b: Point { x: dest.x0, y: 0.0 },
+        },
     ]
 }
 
-fn line_markers(line: &LineGeometry) -> [MarkerGeometry; 2] {
-    let offset = MARKER_SIZE_PT / 2.0 + MARKER_GAP_PT;
-    let (a_dir, b_dir) = endpoint_dirs(line.a, line.b);
+fn cut_guide_position(outer_edge: f64, inner_edge: f64) -> f64 {
+    outer_edge + (inner_edge - outer_edge) * CUT_GUIDE_SAFE_FRACTION
+}
+
+fn vertical_alignment_frames(x0: f64, x1: f64, y0: f64, y1: f64) -> [MarkerGeometry; 2] {
+    let (x0, x1) = ordered_pair(x0, x1);
+    let top_y1 = y0 - MARKER_GAP_PT;
+    let bottom_y0 = y1 + MARKER_GAP_PT;
     [
-        MarkerGeometry { center: Point { x: line.a.x + a_dir.x * offset, y: line.a.y + a_dir.y * offset }, size: MARKER_SIZE_PT },
-        MarkerGeometry { center: Point { x: line.b.x + b_dir.x * offset, y: line.b.y + b_dir.y * offset }, size: MARKER_SIZE_PT },
+        MarkerGeometry {
+            rect: Rect {
+                x0,
+                y0: top_y1 - MARKER_SIZE_PT,
+                x1,
+                y1: top_y1,
+            },
+        },
+        MarkerGeometry {
+            rect: Rect {
+                x0,
+                y0: bottom_y0,
+                x1,
+                y1: bottom_y0 + MARKER_SIZE_PT,
+            },
+        },
     ]
 }
 
-fn endpoint_dirs(a: Point, b: Point) -> (Point, Point) {
-    let dx = b.x - a.x;
-    let dy = b.y - a.y;
-    let len = (dx * dx + dy * dy).sqrt().max(1.0);
-    let ux = dx / len;
-    let uy = dy / len;
-    (Point { x: -ux, y: -uy }, Point { x: ux, y: uy })
+fn horizontal_alignment_frames(x0: f64, x1: f64, y0: f64, y1: f64) -> [MarkerGeometry; 2] {
+    let (y0, y1) = ordered_pair(y0, y1);
+    let left_x1 = x0 - MARKER_GAP_PT;
+    let right_x0 = x1 + MARKER_GAP_PT;
+    [
+        MarkerGeometry {
+            rect: Rect {
+                x0: left_x1 - MARKER_SIZE_PT,
+                y0,
+                x1: left_x1,
+                y1,
+            },
+        },
+        MarkerGeometry {
+            rect: Rect {
+                x0: right_x0,
+                y0,
+                x1: right_x0 + MARKER_SIZE_PT,
+                y1,
+            },
+        },
+    ]
+}
+
+fn ordered_pair(a: f64, b: f64) -> (f64, f64) {
+    if a <= b {
+        (a, b)
+    } else {
+        (b, a)
+    }
 }
 
 fn canvas_to_source_crop(r: Rect, fitted: Rect, img_w: u32, img_h: u32) -> (u32, u32, u32, u32) {
-    let sx0 = ((r.x0 - fitted.x0) / fitted.width() * img_w as f64).floor().clamp(0.0, img_w as f64 - 1.0) as u32;
-    let sy0 = ((r.y0 - fitted.y0) / fitted.height() * img_h as f64).floor().clamp(0.0, img_h as f64 - 1.0) as u32;
-    let sx1 = ((r.x1 - fitted.x0) / fitted.width() * img_w as f64).ceil().clamp(sx0 as f64 + 1.0, img_w as f64) as u32;
-    let sy1 = ((r.y1 - fitted.y0) / fitted.height() * img_h as f64).ceil().clamp(sy0 as f64 + 1.0, img_h as f64) as u32;
+    let sx0 = ((r.x0 - fitted.x0) / fitted.width() * img_w as f64)
+        .floor()
+        .clamp(0.0, img_w as f64 - 1.0) as u32;
+    let sy0 = ((r.y0 - fitted.y0) / fitted.height() * img_h as f64)
+        .floor()
+        .clamp(0.0, img_h as f64 - 1.0) as u32;
+    let sx1 = ((r.x1 - fitted.x0) / fitted.width() * img_w as f64)
+        .ceil()
+        .clamp(sx0 as f64 + 1.0, img_w as f64) as u32;
+    let sy1 = ((r.y1 - fitted.y0) / fitted.height() * img_h as f64)
+        .ceil()
+        .clamp(sy0 as f64 + 1.0, img_h as f64) as u32;
     (sx0, sy0, sx1 - sx0, sy1 - sy0)
 }
 
-fn encode_tile_jpeg(image: &DynamicImage, x: u32, y: u32, w: u32, h: u32) -> Result<Vec<u8>, String> {
+fn encode_tile_jpeg(
+    image: &DynamicImage,
+    x: u32,
+    y: u32,
+    w: u32,
+    h: u32,
+) -> Result<Vec<u8>, String> {
     let cropped = image.crop_imm(x, y, w, h).to_rgb8();
     let mut jpeg = Vec::new();
     JpegEncoder::new_with_quality(&mut jpeg, 92)
@@ -285,7 +468,7 @@ fn build_page_content(page: &PreviewPageGeometry, preview: &PreviewInfo) -> Stri
         draw_contrast_line(&mut out, line, preview.page_height_pt);
     }
     for marker in &page.markers {
-        draw_x_box(&mut out, marker.center, marker.size, preview.page_height_pt);
+        draw_alignment_frame(&mut out, marker.rect, preview.page_height_pt);
     }
     out
 }
@@ -295,57 +478,91 @@ fn build_page_content(page: &PreviewPageGeometry, preview: &PreviewInfo) -> Stri
 // -----------------------------------------------------------------------------
 
 fn draw_contrast_line(out: &mut String, line: &LineGeometry, page_h: f64) {
-    set_stroke(out, 1.0, 1.0, 1.0, 2.0, Some("[7 3] 0"));
-    draw_line(out, line.a, line.b, page_h);
     out.push_str("q\n/GS60 gs\n");
-    set_stroke(out, 0.0, 0.0, 0.0, 1.0, Some("[7 3] 0"));
+    set_stroke(out, 0.45, 0.45, 0.45, 0.9, Some("[7 3] 0"));
     draw_line(out, line.a, line.b, page_h);
     out.push_str("Q\n");
 }
 
 fn draw_outer_line(out: &mut String, line: &LineGeometry, page_h: f64) {
     out.push_str("q\n/GS50 gs\n");
-    set_stroke(out, 0.0, 0.0, 0.0, 0.5, Some("[3 3] 0"));
+    set_stroke(out, 0.55, 0.55, 0.55, 0.5, Some("[3 3] 0"));
     draw_line(out, line.a, line.b, page_h);
     out.push_str("Q\n");
 }
 
 fn set_stroke(out: &mut String, r: f64, g: f64, b: f64, width: f64, dash: Option<&str>) {
     out.push_str(&format!("{:.3} {:.3} {:.3} RG\n{:.3} w\n", r, g, b, width));
-    if let Some(d) = dash { out.push_str(&format!("{} d\n", d)); } else { out.push_str("[] 0 d\n"); }
+    if let Some(d) = dash {
+        out.push_str(&format!("{} d\n", d));
+    } else {
+        out.push_str("[] 0 d\n");
+    }
 }
 
 fn draw_line(out: &mut String, a: Point, b: Point, page_h: f64) {
-    out.push_str(&format!("{:.3} {:.3} m {:.3} {:.3} l S\n", a.x, page_h - a.y, b.x, page_h - b.y));
+    out.push_str(&format!(
+        "{:.3} {:.3} m {:.3} {:.3} l S\n",
+        a.x,
+        page_h - a.y,
+        b.x,
+        page_h - b.y
+    ));
 }
 
 fn draw_image(out: &mut String, dest: Rect, page_h: f64) {
     let x = dest.x0;
     let y = pdf_y(dest.y0, dest.height(), page_h);
-    out.push_str(&format!("q\n{:.3} 0 0 {:.3} {:.3} {:.3} cm\n/Im0 Do\nQ\n", dest.width(), dest.height(), x, y));
+    out.push_str(&format!(
+        "q\n{:.3} 0 0 {:.3} {:.3} {:.3} cm\n/Im0 Do\nQ\n",
+        dest.width(),
+        dest.height(),
+        x,
+        y
+    ));
 }
 
 fn pdf_y(y_top: f64, h: f64, page_h: f64) -> f64 {
     page_h - y_top - h
 }
 
-fn draw_x_box(out: &mut String, center: Point, size: f64, page_h: f64) {
-    let r = Rect { x0: center.x - size / 2.0, y0: center.y - size / 2.0, x1: center.x + size / 2.0, y1: center.y + size / 2.0 };
-    draw_x_box_path(out, r, page_h, 0.0, 0.0, 0.0, 1.1);
+fn draw_alignment_frame(out: &mut String, r: Rect, page_h: f64) {
+    out.push_str("q\n/GS60 gs\n");
+    draw_alignment_frame_path(out, r, page_h, 0.45, 0.45, 0.45, 0.8);
+    out.push_str("Q\n");
 }
 
-fn draw_x_box_path(out: &mut String, r: Rect, page_h: f64, red: f64, green: f64, blue: f64, width: f64) {
-    out.push_str(&format!("{:.3} {:.3} {:.3} RG\n{:.3} w\n[] 0 d\n1 J 1 j\n", red, green, blue, width));
+fn draw_alignment_frame_path(
+    out: &mut String,
+    r: Rect,
+    page_h: f64,
+    red: f64,
+    green: f64,
+    blue: f64,
+    width: f64,
+) {
+    out.push_str(&format!(
+        "{:.3} {:.3} {:.3} RG\n{:.3} w\n[] 0 d\n1 J 1 j\n",
+        red, green, blue, width
+    ));
     out.push_str(&format!(
         "{:.3} {:.3} m {:.3} {:.3} l {:.3} {:.3} l {:.3} {:.3} l h {:.3} {:.3} m {:.3} {:.3} l {:.3} {:.3} m {:.3} {:.3} l S\n",
-        r.x0, page_h - r.y0,
-        r.x1, page_h - r.y0,
-        r.x1, page_h - r.y1,
-        r.x0, page_h - r.y1,
-        r.x0, page_h - r.y0,
-        r.x1, page_h - r.y1,
-        r.x0, page_h - r.y1,
-        r.x1, page_h - r.y0,
+        r.x0,
+        page_h - r.y0,
+        r.x1,
+        page_h - r.y0,
+        r.x1,
+        page_h - r.y1,
+        r.x0,
+        page_h - r.y1,
+        r.x0,
+        page_h - r.y0,
+        r.x1,
+        page_h - r.y1,
+        r.x0,
+        page_h - r.y1,
+        r.x1,
+        page_h - r.y0,
     ));
 }
 
@@ -360,7 +577,9 @@ fn write_pdf(page_w: f64, page_h: f64, pages: &[PageChunk]) -> Vec<u8> {
     let first_page_obj = 3usize;
 
     objects.push(b"<< /Type /Catalog /Pages 2 0 R >>".to_vec());
-    let kids: String = (0..page_count).map(|i| format!("{} 0 R ", first_page_obj + i * 3)).collect();
+    let kids: String = (0..page_count)
+        .map(|i| format!("{} 0 R ", first_page_obj + i * 3))
+        .collect();
     objects.push(format!("<< /Type /Pages /Kids [{}] /Count {} >>", kids, page_count).into_bytes());
 
     for (i, p) in pages.iter().enumerate() {
@@ -391,11 +610,20 @@ fn write_pdf(page_w: f64, page_h: f64, pages: &[PageChunk]) -> Vec<u8> {
         out.extend_from_slice(b"\nendobj\n");
     }
     let xref = out.len();
-    out.extend_from_slice(format!("xref\n0 {}\n0000000000 65535 f \n", objects.len() + 1).as_bytes());
+    out.extend_from_slice(
+        format!("xref\n0 {}\n0000000000 65535 f \n", objects.len() + 1).as_bytes(),
+    );
     for off in offsets.iter().skip(1) {
         out.extend_from_slice(format!("{:010} 00000 n \n", off).as_bytes());
     }
-    out.extend_from_slice(format!("trailer\n<< /Size {} /Root 1 0 R >>\nstartxref\n{}\n%%EOF\n", objects.len() + 1, xref).as_bytes());
+    out.extend_from_slice(
+        format!(
+            "trailer\n<< /Size {} /Root 1 0 R >>\nstartxref\n{}\n%%EOF\n",
+            objects.len() + 1,
+            xref
+        )
+        .as_bytes(),
+    );
     out
 }
 
