@@ -58,7 +58,7 @@
   let targetWidthMm = 594;
   let targetHeightMm = 841;
   let overlapMm = 5;
-  let marginMm = 3;
+  let marginMm = 1;
   let preview: PreviewInfo | null = null;
   let previewGeometry: PreviewGeometry | null = null;
   let status = '選圖片，按產生。';

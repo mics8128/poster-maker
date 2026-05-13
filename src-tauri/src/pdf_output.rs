@@ -2,7 +2,7 @@ use crate::layout::{mm, PosterOptions, PreviewInfo};
 use image::{codecs::jpeg::JpegEncoder, DynamicImage};
 use serde::Serialize;
 
-const MARKER_SIZE_PT: f64 = 12.0;
+const MARKER_SIZE_PT: f64 = 10.0;
 const MARKER_GAP_PT: f64 = 2.0;
 const CUT_GUIDE_SAFE_FRACTION: f64 = 0.35;
 

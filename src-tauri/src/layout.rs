@@ -5,7 +5,7 @@ use serde::{Deserialize, Serialize};
 const A4_WIDTH_PT: f64 = 595.2755905512;
 const A4_HEIGHT_PT: f64 = 841.8897637795;
 const MM_TO_PT: f64 = 72.0 / 25.4;
-const MARKER_SIZE_PT: f64 = 12.0;
+const MARKER_SIZE_PT: f64 = 10.0;
 const MARKER_GAP_PT: f64 = 2.0;
 const MARKER_STROKE_PT: f64 = 1.1;
 
@@ -96,11 +96,12 @@ fn candidate(
     let (page_w, page_h) = page_size(landscape);
     let margin = reserved_margin(options);
     let overlap = mm(options.overlap_mm);
-    let (base_w, base_h, canvas_w, canvas_h) =
+    let (max_base_w, max_base_h, _, _) =
         poster_canvas_size(page_w, page_h, cols, rows, margin, overlap)?;
-    let scale = (canvas_w / src_w_pt).min(canvas_h / src_h_pt);
-    let image_w = src_w_pt * scale;
-    let image_h = src_h_pt * scale;
+    let (base_w, base_h) =
+        fit_base_tile_to_source_ratio(max_base_w, max_base_h, cols, rows, src_w_pt / src_h_pt);
+    let canvas_w = base_w * cols as f64;
+    let canvas_h = base_h * rows as f64;
     Ok(PreviewInfo {
         cols,
         rows,
@@ -111,14 +112,30 @@ fn candidate(
         base_tile_height_pt: base_h,
         canvas_width_pt: canvas_w,
         canvas_height_pt: canvas_h,
-        image_width_pt: image_w,
-        image_height_pt: image_h,
-        image_width_cm: pt_to_cm(image_w),
-        image_height_cm: pt_to_cm(image_h),
+        image_width_pt: canvas_w,
+        image_height_pt: canvas_h,
+        image_width_cm: pt_to_cm(canvas_w),
+        image_height_cm: pt_to_cm(canvas_h),
         paper_width_cm: pt_to_cm(page_w * cols as f64),
         paper_height_cm: pt_to_cm(page_h * rows as f64),
-        score: image_w * image_h,
+        score: canvas_w * canvas_h,
     })
+}
+
+fn fit_base_tile_to_source_ratio(
+    max_base_w: f64,
+    max_base_h: f64,
+    cols: u32,
+    rows: u32,
+    src_ratio: f64,
+) -> (f64, f64) {
+    let target_base_ratio = src_ratio * rows as f64 / cols as f64;
+    let base_h_for_max_w = max_base_w / target_base_ratio;
+    if base_h_for_max_w <= max_base_h {
+        (max_base_w, base_h_for_max_w)
+    } else {
+        (max_base_h * target_base_ratio, max_base_h)
+    }
 }
 
 pub fn default_options(cols: u32, rows: u32) -> PosterOptions {
@@ -128,7 +145,7 @@ pub fn default_options(cols: u32, rows: u32) -> PosterOptions {
         target_width_mm: None,
         target_height_mm: None,
         overlap_mm: 5.0,
-        margin_mm: 3.0,
+        margin_mm: 1.0,
         draw_outer_marks: true,
         draw_cut_guides: true,
     }
@@ -320,6 +337,18 @@ mod tests {
             l.base_tile_width_pt + overlap * 2.0 <= l.page_width_pt - mm(o.margin_mm) * 2.0 + 0.01
                 || l.cols <= 2
         );
+    }
+
+    #[test]
+    fn fixed_grid_fills_one_axis_without_letterboxing() {
+        let o = opts(3, 3);
+        let l = resolve_layout(1055, 1491, &o).unwrap();
+        let source_ratio = 1055.0 / 1491.0;
+        let canvas_ratio = l.canvas_width_pt / l.canvas_height_pt;
+
+        assert!((canvas_ratio - source_ratio).abs() < 0.000001);
+        assert!((l.image_width_pt - l.canvas_width_pt).abs() < 0.001);
+        assert!((l.image_height_pt - l.canvas_height_pt).abs() < 0.001);
     }
 
     #[test]
