@@ -4,7 +4,7 @@ use serde::Serialize;
 
 const MARKER_SIZE_PT: f64 = 12.0;
 const MARKER_GAP_PT: f64 = 2.0;
-const CUT_GUIDE_SAFE_FRACTION: f64 = 0.2;
+const CUT_GUIDE_SAFE_FRACTION: f64 = 0.35;
 
 #[derive(Debug, Clone, Copy, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -34,7 +34,9 @@ impl Rect {
 #[derive(Debug, Clone, Copy)]
 struct TileGeometry {
     base_canvas: Rect,
+    guide_canvas: Rect,
     clip_canvas: Rect,
+    guide_page: Rect,
     dest_page: Rect,
 }
 
@@ -176,41 +178,41 @@ fn page_geometry(
 
     if options.draw_cut_guides {
         if col > 0 {
-            let x = cut_guide_position(tile.dest_page.x0, guides.left_x);
+            let x = cut_guide_position(tile.guide_page.x0, guides.left_x);
             let line = LineGeometry {
                 a: Point {
                     x,
-                    y: tile.dest_page.y0,
+                    y: tile.guide_page.y0,
                 },
                 b: Point {
                     x,
-                    y: tile.dest_page.y1,
+                    y: tile.guide_page.y1,
                 },
             };
             markers.extend(vertical_alignment_frames(
-                tile.dest_page.x0,
+                tile.guide_page.x0,
                 guides.left_x,
-                tile.dest_page.y0,
-                tile.dest_page.y1,
+                tile.guide_page.y0,
+                tile.guide_page.y1,
             ));
             cut_lines.push(line);
         }
         if row > 0 {
-            let y = cut_guide_position(tile.dest_page.y0, guides.top_y);
+            let y = cut_guide_position(tile.guide_page.y0, guides.top_y);
             let line = LineGeometry {
                 a: Point {
-                    x: tile.dest_page.x0,
+                    x: tile.guide_page.x0,
                     y,
                 },
                 b: Point {
-                    x: tile.dest_page.x1,
+                    x: tile.guide_page.x1,
                     y,
                 },
             };
             markers.extend(horizontal_alignment_frames(
-                tile.dest_page.x0,
-                tile.dest_page.x1,
-                tile.dest_page.y0,
+                tile.guide_page.x0,
+                tile.guide_page.x1,
+                tile.guide_page.y0,
                 guides.top_y,
             ));
             cut_lines.push(line);
@@ -218,17 +220,17 @@ fn page_geometry(
         if col < preview.cols - 1 {
             markers.extend(vertical_alignment_frames(
                 guides.right_x,
-                tile.dest_page.x1,
-                tile.dest_page.y0,
-                tile.dest_page.y1,
+                tile.guide_page.x1,
+                tile.guide_page.y0,
+                tile.guide_page.y1,
             ));
         }
         if row < preview.rows - 1 {
             markers.extend(horizontal_alignment_frames(
-                tile.dest_page.x0,
-                tile.dest_page.x1,
+                tile.guide_page.x0,
+                tile.guide_page.x1,
                 guides.bottom_y,
-                tile.dest_page.y1,
+                tile.guide_page.y1,
             ));
         }
     }
@@ -272,29 +274,45 @@ fn tile_geometry(
         x1: (col + 1) as f64 * preview.base_tile_width_pt,
         y1: (row + 1) as f64 * preview.base_tile_height_pt,
     };
-    let clip = Rect {
-        x0: (base.x0 - overlap_if(col > 0, overlap)).max(image_canvas.x0),
-        y0: (base.y0 - overlap_if(row > 0, overlap)).max(image_canvas.y0),
-        x1: (base.x1 + overlap_if(col < preview.cols - 1, overlap)).min(image_canvas.x1),
-        y1: (base.y1 + overlap_if(row < preview.rows - 1, overlap)).min(image_canvas.y1),
+    let guide = Rect {
+        x0: base.x0 - cutter_overlap_before(col, preview.cols, overlap),
+        y0: base.y0 - cutter_overlap_before(row, preview.rows, overlap),
+        x1: base.x1 + cutter_overlap_after(col, preview.cols, overlap),
+        y1: base.y1 + cutter_overlap_after(row, preview.rows, overlap),
     };
+    let clip = intersect_rect(guide, image_canvas)
+        .ok_or_else(|| "Tile does not intersect image".to_string())?;
     if clip.width() <= 0.0 || clip.height() <= 0.0 {
         return Err("Tile does not intersect image".into());
     }
 
     let page_w = preview.page_width_pt;
     let page_h = preview.page_height_pt;
-    let dest = Rect {
-        x0: (page_w - clip.width()) / 2.0,
-        y0: (page_h - clip.height()) / 2.0,
-        x1: (page_w + clip.width()) / 2.0,
-        y1: (page_h + clip.height()) / 2.0,
-    };
+    let guide_dest = centered_rect(page_w, page_h, guide.width(), guide.height());
+    let dest = map_rect_between(clip, guide, guide_dest);
     Ok(TileGeometry {
         base_canvas: base,
+        guide_canvas: guide,
         clip_canvas: clip,
+        guide_page: guide_dest,
         dest_page: dest,
     })
+}
+
+fn cutter_overlap_before(index: u32, count: u32, overlap: f64) -> f64 {
+    match count {
+        0 | 1 => 0.0,
+        2 => overlap_if(index > 0, overlap),
+        _ => overlap,
+    }
+}
+
+fn cutter_overlap_after(index: u32, count: u32, overlap: f64) -> f64 {
+    match count {
+        0 | 1 => 0.0,
+        2 => overlap_if(index + 1 < count, overlap),
+        _ => overlap,
+    }
 }
 
 fn overlap_if(condition: bool, overlap: f64) -> f64 {
@@ -302,6 +320,36 @@ fn overlap_if(condition: bool, overlap: f64) -> f64 {
         overlap
     } else {
         0.0
+    }
+}
+
+fn intersect_rect(a: Rect, b: Rect) -> Option<Rect> {
+    let rect = Rect {
+        x0: a.x0.max(b.x0),
+        y0: a.y0.max(b.y0),
+        x1: a.x1.min(b.x1),
+        y1: a.y1.min(b.y1),
+    };
+    (rect.width() > 0.0 && rect.height() > 0.0).then_some(rect)
+}
+
+fn centered_rect(page_w: f64, page_h: f64, width: f64, height: f64) -> Rect {
+    Rect {
+        x0: (page_w - width) / 2.0,
+        y0: (page_h - height) / 2.0,
+        x1: (page_w + width) / 2.0,
+        y1: (page_h + height) / 2.0,
+    }
+}
+
+fn map_rect_between(rect: Rect, source: Rect, dest: Rect) -> Rect {
+    let sx = dest.width() / source.width();
+    let sy = dest.height() / source.height();
+    Rect {
+        x0: dest.x0 + (rect.x0 - source.x0) * sx,
+        y0: dest.y0 + (rect.y0 - source.y0) * sy,
+        x1: dest.x0 + (rect.x1 - source.x0) * sx,
+        y1: dest.y0 + (rect.y1 - source.y0) * sy,
     }
 }
 
@@ -320,13 +368,13 @@ fn fit_rect(src_w: f64, src_h: f64, canvas: Rect) -> Rect {
 }
 
 fn guide_geometry(tile: TileGeometry) -> GuideGeometry {
-    let sx = tile.dest_page.width() / tile.clip_canvas.width();
-    let sy = tile.dest_page.height() / tile.clip_canvas.height();
+    let sx = tile.guide_page.width() / tile.guide_canvas.width();
+    let sy = tile.guide_page.height() / tile.guide_canvas.height();
     GuideGeometry {
-        left_x: tile.dest_page.x0 + (tile.base_canvas.x0 - tile.clip_canvas.x0) * sx,
-        right_x: tile.dest_page.x0 + (tile.base_canvas.x1 - tile.clip_canvas.x0) * sx,
-        top_y: tile.dest_page.y0 + (tile.base_canvas.y0 - tile.clip_canvas.y0) * sy,
-        bottom_y: tile.dest_page.y0 + (tile.base_canvas.y1 - tile.clip_canvas.y0) * sy,
+        left_x: tile.guide_page.x0 + (tile.base_canvas.x0 - tile.guide_canvas.x0) * sx,
+        right_x: tile.guide_page.x0 + (tile.base_canvas.x1 - tile.guide_canvas.x0) * sx,
+        top_y: tile.guide_page.y0 + (tile.base_canvas.y0 - tile.guide_canvas.y0) * sy,
+        bottom_y: tile.guide_page.y0 + (tile.base_canvas.y1 - tile.guide_canvas.y0) * sy,
     }
 }
 
@@ -632,4 +680,45 @@ fn stream_object(data: &[u8]) -> Vec<u8> {
     out.extend_from_slice(data);
     out.extend_from_slice(b"\nendstream");
     out
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::layout::{default_options, resolve_layout};
+
+    #[test]
+    fn cut_guides_reuse_same_page_position_for_batch_trimming() {
+        let options = default_options(4, 3);
+        let preview = resolve_layout(1600, 1200, &options).unwrap();
+        let geometry = preview_geometry_for_image_size(1600, 1200, &options, &preview).unwrap();
+        let mut vertical_x = Vec::new();
+        let mut horizontal_y = Vec::new();
+
+        for page in geometry.pages {
+            for line in page.cut_lines {
+                if (line.a.x - line.b.x).abs() < 0.001 {
+                    vertical_x.push(round_milli(line.a.x));
+                }
+                if (line.a.y - line.b.y).abs() < 0.001 {
+                    horizontal_y.push(round_milli(line.a.y));
+                }
+            }
+        }
+
+        assert!(!vertical_x.is_empty());
+        assert!(!horizontal_y.is_empty());
+        assert!(
+            vertical_x.iter().all(|x| *x == vertical_x[0]),
+            "{vertical_x:?}"
+        );
+        assert!(
+            horizontal_y.iter().all(|y| *y == horizontal_y[0]),
+            "{horizontal_y:?}"
+        );
+    }
+
+    fn round_milli(value: f64) -> i64 {
+        (value * 1000.0).round() as i64
+    }
 }
