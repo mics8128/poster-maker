@@ -10,6 +10,8 @@
   type PosterOptions = {
     cols: number;
     rows: number;
+    targetWidthMm?: number | null;
+    targetHeightMm?: number | null;
     overlapMm: number;
     marginMm: number;
     drawOuterMarks: boolean;
@@ -53,6 +55,8 @@
   let grid = '3x2 / 2x3';
   let cols = 3;
   let rows = 2;
+  let targetWidthMm = 594;
+  let targetHeightMm = 841;
   let overlapMm = 5;
   let marginMm = 3;
   let preview: PreviewInfo | null = null;
@@ -60,7 +64,20 @@
   let status = '選圖片，按產生。';
   let busy = false;
 
-  $: options = { cols, rows, overlapMm, marginMm, drawOuterMarks: true, drawCutGuides: true } satisfies PosterOptions;
+  $: usesCustomSizeMode = grid === 'Custom Size';
+  $: resolvedTargetWidthMm = usesCustomSizeMode ? validTargetMm(targetWidthMm) : null;
+  $: resolvedTargetHeightMm = usesCustomSizeMode ? validTargetMm(targetHeightMm) : null;
+  $: usesTargetSize = usesCustomSizeMode && (resolvedTargetWidthMm !== null || resolvedTargetHeightMm !== null);
+  $: options = {
+    cols,
+    rows,
+    targetWidthMm: usesTargetSize ? resolvedTargetWidthMm : null,
+    targetHeightMm: usesTargetSize ? resolvedTargetHeightMm : null,
+    overlapMm,
+    marginMm,
+    drawOuterMarks: true,
+    drawCutGuides: true,
+  } satisfies PosterOptions;
   $: previewImageSrc = inputPath ? convertFileSrc(inputPath, 'asset') : '';
   $: if (inputPath) refreshPreview(options, inputPath);
 
@@ -73,6 +90,7 @@
       customRows = rows;
       return;
     }
+    if (grid === 'Custom Size') return;
     const [c, r] = grid.split('/')[0].trim().split('x').map(Number);
     cols = c;
     rows = r;
@@ -94,6 +112,11 @@
     const n = Number(value);
     if (!Number.isFinite(n)) return 1;
     return Math.max(1, Math.min(12, Math.round(n)));
+  }
+
+  function validTargetMm(value: number) {
+    const n = Number(value);
+    return Number.isFinite(n) && n > 0 ? n : null;
   }
 
   function defaultOutputName(path: string) {
@@ -121,7 +144,8 @@
       if (seq !== previewSeq) return;
       preview = result;
       previewGeometry = geometry;
-      status = `最佳輸出：${result.cols}x${result.rows} A4，${result.landscape ? '橫向' : '直向'}\n成品圖面：約 ${result.imageWidthCm.toFixed(1)} × ${result.imageHeightCm.toFixed(1)} cm\nA4總外框：約 ${result.paperWidthCm.toFixed(1)} × ${result.paperHeightCm.toFixed(1)} cm\n重疊 ${overlapMm}mm，邊界 ${marginMm}mm`;
+      const layoutLabel = usesTargetSize ? '自動張數' : '最佳輸出';
+      status = `${layoutLabel}：${result.cols}x${result.rows} A4，共 ${result.cols * result.rows} 張，${result.landscape ? '橫向' : '直向'}\n成品圖面：約 ${result.imageWidthCm.toFixed(1)} × ${result.imageHeightCm.toFixed(1)} cm\nA4總外框：約 ${result.paperWidthCm.toFixed(1)} × ${result.paperHeightCm.toFixed(1)} cm\n重疊 ${overlapMm}mm，邊界 ${marginMm}mm`;
     } catch (error) {
       preview = null;
       previewGeometry = null;
@@ -176,7 +200,7 @@
     </div>
 
     <div class="field">
-      <div class="label">A4 張數</div>
+      <div class="label">輸出尺寸</div>
       <select bind:value={grid} on:change={gridChanged}>
         <option>2x1 / 1x2</option>
         <option>2x2</option>
@@ -185,8 +209,9 @@
         <option>4x3 / 3x4</option>
         <option>4x4</option>
         <option>Custom</option>
+        <option>Custom Size</option>
       </select>
-      <div class="muted">自動使用最佳擺放</div>
+      <div class="muted">{usesCustomSizeMode ? '依 mm 尺寸自動計算 A4 張數' : '選擇 A4 張數並自動使用最佳擺放'}</div>
       {#if grid === 'Custom'}
         <div class="custom-grid">
           <div class="stepper">
@@ -202,6 +227,19 @@
             <button type="button" on:click={() => adjustCustom('rows', 1)}>+</button>
           </div>
         </div>
+      {/if}
+      {#if usesCustomSizeMode}
+        <div class="grid2">
+          <label class="field">
+            <span class="stepper-label">寬 mm</span>
+            <input type="number" min="1" step="1" bind:value={targetWidthMm} />
+          </label>
+          <label class="field">
+            <span class="stepper-label">高 mm</span>
+            <input type="number" min="1" step="1" bind:value={targetHeightMm} />
+          </label>
+        </div>
+        <div class="muted">依圖片比例輸出；填單邊時會自動推算另一邊，並反推需要的 A4 張數。</div>
       {/if}
     </div>
 
