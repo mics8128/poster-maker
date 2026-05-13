@@ -6,7 +6,7 @@ Poster Maker 是一個海報分割工具：選一張圖片，輸出多頁 A4 PDF
 
 ## 下載
 
-最新版本：`v0.2.0`
+最新版本：`v0.2.1`
 
 GitHub Releases：
 
@@ -33,7 +33,7 @@ macOS 若被 Gatekeeper 擋下，請右鍵 → 打開。正式公開版之後再
 
 - 輸入圖片：PNG / JPG / JPEG / WEBP / BMP / TIFF
 - 輸出：多頁 A4 PDF
-- A4 張數：2x1 / 1x2、2x2、3x2 / 2x3、3x3、4x3 / 3x4、4x4、自訂
+- 輸出尺寸：2x1 / 1x2、2x2、3x2 / 2x3、3x3、4x3 / 3x4、4x4、自訂張數、指定 mm 尺寸自動計算張數
 - 自動最佳擺放：自動判斷欄列反向與 A4 直/橫向
 - 預覽：顯示實際切片圖片、A4 頁面、裁切線、X 對齊框
 - 預設：重疊 5mm，邊界 3mm
@@ -109,7 +109,7 @@ CLI 預設輸出到來源圖片同一個資料夾。
 ## macOS 打包
 
 ```bash
-VERSION=0.2.0 scripts/build_macos_alpha.sh
+VERSION=0.2.1 scripts/build_macos_alpha.sh
 ```
 
 這個腳本會：
