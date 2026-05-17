@@ -189,9 +189,10 @@ fn page_geometry(
                     y: tile.guide_page.y1,
                 },
             };
+            let overlap = guides.left_x - tile.guide_page.x0;
             markers.extend(vertical_alignment_frames(
                 tile.guide_page.x0,
-                guides.left_x,
+                guides.left_x + overlap,
                 tile.guide_page.y0,
                 tile.guide_page.y1,
             ));
@@ -209,27 +210,30 @@ fn page_geometry(
                     y,
                 },
             };
+            let overlap = guides.top_y - tile.guide_page.y0;
             markers.extend(horizontal_alignment_frames(
                 tile.guide_page.x0,
                 tile.guide_page.x1,
                 tile.guide_page.y0,
-                guides.top_y,
+                guides.top_y + overlap,
             ));
             cut_lines.push(line);
         }
         if col < preview.cols - 1 {
+            let overlap = tile.guide_page.x1 - guides.right_x;
             markers.extend(vertical_alignment_frames(
-                guides.right_x,
+                guides.right_x - overlap,
                 tile.guide_page.x1,
                 tile.guide_page.y0,
                 tile.guide_page.y1,
             ));
         }
         if row < preview.rows - 1 {
+            let overlap = tile.guide_page.y1 - guides.bottom_y;
             markers.extend(horizontal_alignment_frames(
                 tile.guide_page.x0,
                 tile.guide_page.x1,
-                guides.bottom_y,
+                guides.bottom_y - overlap,
                 tile.guide_page.y1,
             ));
         }
@@ -715,6 +719,42 @@ mod tests {
         assert!(
             horizontal_y.iter().all(|y| *y == horizontal_y[0]),
             "{horizontal_y:?}"
+        );
+    }
+
+    #[test]
+    fn alignment_frames_span_the_full_shared_overlap() {
+        let options = default_options(4, 3);
+        let preview = resolve_layout(1600, 1200, &options).unwrap();
+        let geometry = preview_geometry_for_image_size(1600, 1200, &options, &preview).unwrap();
+        let expected_overlap_span = mm(options.overlap_mm) * 2.0;
+        let mut vertical_frames = 0;
+        let mut horizontal_frames = 0;
+
+        for page in geometry.pages {
+            for marker in page.markers {
+                let width = marker.rect.width();
+                let height = marker.rect.height();
+                if width > height {
+                    vertical_frames += 1;
+                    assert_close(width, expected_overlap_span);
+                    assert_close(height, MARKER_SIZE_PT);
+                } else {
+                    horizontal_frames += 1;
+                    assert_close(width, MARKER_SIZE_PT);
+                    assert_close(height, expected_overlap_span);
+                }
+            }
+        }
+
+        assert!(vertical_frames > 0);
+        assert!(horizontal_frames > 0);
+    }
+
+    fn assert_close(actual: f64, expected: f64) {
+        assert!(
+            (actual - expected).abs() < 0.001,
+            "actual={actual}, expected={expected}"
         );
     }
 
