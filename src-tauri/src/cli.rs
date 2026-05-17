@@ -1,5 +1,5 @@
-use poster_maker_lib::{default_output_name, generate_poster_file};
 use poster_maker_lib::layout::default_options;
+use poster_maker_lib::{default_output_name, generate_poster_file};
 use std::path::Path;
 
 fn main() {
@@ -28,16 +28,23 @@ fn run() -> Result<(), String> {
 
     let output_name = output.unwrap_or_else(|| default_output_name(Path::new(&input)));
     let options = default_options(grid.0, grid.1);
-    let result = generate_poster_file(input, output_name, overwrite, options).map_err(|e| e.to_string())?;
+    let result =
+        generate_poster_file(input, output_name, overwrite, options).map_err(|e| e.to_string())?;
     println!("Generated {} pages: {}", result.pages, result.output);
     Ok(())
 }
 
 fn parse_grid(value: &str) -> Result<(u32, u32), String> {
     let normalized = value.trim().replace('×', "x").to_lowercase();
-    let (cols, rows) = normalized.split_once('x').ok_or_else(|| "Grid must look like 3x2".to_string())?;
-    let cols = cols.parse::<u32>().map_err(|_| "Invalid grid columns".to_string())?;
-    let rows = rows.parse::<u32>().map_err(|_| "Invalid grid rows".to_string())?;
+    let (cols, rows) = normalized
+        .split_once('x')
+        .ok_or_else(|| "Grid must look like 3x2".to_string())?;
+    let cols = cols
+        .parse::<u32>()
+        .map_err(|_| "Invalid grid columns".to_string())?;
+    let rows = rows
+        .parse::<u32>()
+        .map_err(|_| "Invalid grid rows".to_string())?;
     if cols == 0 || rows == 0 || cols > 12 || rows > 12 {
         return Err("Grid range must be 1..12".to_string());
     }

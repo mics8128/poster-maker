@@ -54,7 +54,12 @@ fn output_exists(input: String, output_name: String) -> Result<bool, AppError> {
     Ok(default_output_path(&input, &output_name)?.exists())
 }
 
-pub fn generate_poster_file(input: String, output_name: String, overwrite: bool, options: PosterOptions) -> Result<GenerateResult, AppError> {
+pub fn generate_poster_file(
+    input: String,
+    output_name: String,
+    overwrite: bool,
+    options: PosterOptions,
+) -> Result<GenerateResult, AppError> {
     if !Path::new(&input).exists() {
         return Err(AppError::Message("Input file does not exist".into()));
     }
@@ -64,14 +69,20 @@ pub fn generate_poster_file(input: String, output_name: String, overwrite: bool,
     }
     let output_string = output.to_string_lossy().to_string();
     let image = image::open(&input)?;
-    let preview = resolve_layout(image.width(), image.height(), &options).map_err(AppError::Message)?;
+    let preview =
+        resolve_layout(image.width(), image.height(), &options).map_err(AppError::Message)?;
     pdf_output::generate(&image, &output_string, &options, &preview).map_err(AppError::Message)?;
-    Ok(GenerateResult { pages: preview.cols * preview.rows, output: output_string })
+    Ok(GenerateResult {
+        pages: preview.cols * preview.rows,
+        output: output_string,
+    })
 }
 
 pub fn default_output_path(input: &str, output_name: &str) -> Result<PathBuf, AppError> {
     let input_path = Path::new(input);
-    let dir = input_path.parent().ok_or_else(|| AppError::Message("Input file has no parent directory".into()))?;
+    let dir = input_path
+        .parent()
+        .ok_or_else(|| AppError::Message("Input file has no parent directory".into()))?;
     let mut name = output_name.trim().to_string();
     if name.is_empty() {
         name = default_output_name(input_path);
@@ -95,14 +106,24 @@ pub fn default_output_name(input_path: &Path) -> String {
 }
 
 #[tauri::command]
-fn generate_poster(input: String, output_name: String, overwrite: bool, options: PosterOptions) -> Result<GenerateResult, AppError> {
+fn generate_poster(
+    input: String,
+    output_name: String,
+    overwrite: bool,
+    options: PosterOptions,
+) -> Result<GenerateResult, AppError> {
     generate_poster_file(input, output_name, overwrite, options)
 }
 
 pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_dialog::init())
-        .invoke_handler(tauri::generate_handler![inspect_image, preview_geometry, output_exists, generate_poster])
+        .invoke_handler(tauri::generate_handler![
+            inspect_image,
+            preview_geometry,
+            output_exists,
+            generate_poster
+        ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
 }
