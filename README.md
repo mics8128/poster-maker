@@ -6,7 +6,7 @@ Poster Maker 是一個海報分割工具：選一張圖片，輸出多頁 A4 PDF
 
 ## 下載
 
-最新版本：`v0.2.1`
+最新版本：`v0.2.4`
 
 GitHub Releases：
 
@@ -27,7 +27,20 @@ https://github.com/mics8128/poster-maker/releases
 - macOS notarization
 - PDF 輸入
 
-macOS 若被 Gatekeeper 擋下，請右鍵 → 打開。正式公開版之後再做 Apple notarization。
+### macOS 開啟說明
+
+app 是 ad-hoc signed、未經 Apple notarization，所以從網路下載後會被 Gatekeeper 標記為 quarantine。第一次開啟請任選一種方式：
+
+- 右鍵點 app → 打開 → 在警告視窗按「打開」。
+- 或在終端機移除 quarantine 屬性：
+
+  ```bash
+  xattr -dr com.apple.quarantine "/Applications/Poster Maker.app"
+  ```
+
+> 若出現「Poster Maker 已損毀，無法打開」(damaged)，通常是下載的 app 沒有有效簽章造成的；v0.2.4 起 CI release 已對 app 做 ad-hoc 簽章修正此問題。若仍遇到，執行上面的 `xattr` 指令即可。
+
+正式公開版之後再做 Apple notarization。
 
 ## 功能
 
@@ -109,7 +122,7 @@ CLI 預設輸出到來源圖片同一個資料夾。
 ## macOS 打包
 
 ```bash
-VERSION=0.2.1 scripts/build_macos_alpha.sh
+VERSION=0.2.4 scripts/build_macos_alpha.sh
 ```
 
 這個腳本會：
