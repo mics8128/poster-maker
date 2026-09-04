@@ -1,3 +1,4 @@
+use crate::imposition::ImpositionPreview;
 use crate::layout::{mm, PosterOptions, PreviewInfo};
 use image::{codecs::jpeg::JpegEncoder, DynamicImage};
 use serde::Serialize;
@@ -97,6 +98,33 @@ pub fn generate(
 ) -> Result<(), String> {
     let pages = build_pages(image, options, preview)?;
     let pdf = write_pdf(preview.page_width_pt, preview.page_height_pt, &pages);
+    std::fs::write(output, pdf).map_err(|e| e.to_string())
+}
+
+/// Write one custom-size PDF sheet containing every imposed copy.
+///
+/// A single JPEG XObject is shared by all image placements. For a rotated
+/// arrangement the source raster is rotated clockwise once before it is embedded.
+pub fn generate_imposition(
+    image: &DynamicImage,
+    output: &str,
+    preview: &ImpositionPreview,
+) -> Result<(), String> {
+    let placed_image = if preview.item_rotated {
+        image.rotate90()
+    } else {
+        image.clone()
+    };
+    let jpeg = encode_full_jpeg(&placed_image)?;
+    let content = build_imposition_page_content(preview);
+    let pdf = write_single_page_pdf(
+        preview.page_width_pt,
+        preview.page_height_pt,
+        &content,
+        &jpeg,
+        placed_image.width(),
+        placed_image.height(),
+    );
     std::fs::write(output, pdf).map_err(|e| e.to_string())
 }
 
@@ -499,9 +527,17 @@ fn encode_tile_jpeg(
     h: u32,
 ) -> Result<Vec<u8>, String> {
     let cropped = image.crop_imm(x, y, w, h).to_rgb8();
+    encode_rgb_jpeg(&cropped)
+}
+
+fn encode_full_jpeg(image: &DynamicImage) -> Result<Vec<u8>, String> {
+    encode_rgb_jpeg(&image.to_rgb8())
+}
+
+fn encode_rgb_jpeg(image: &image::RgbImage) -> Result<Vec<u8>, String> {
     let mut jpeg = Vec::new();
     JpegEncoder::new_with_quality(&mut jpeg, 92)
-        .encode_image(&cropped)
+        .encode_image(image)
         .map_err(|e| e.to_string())?;
     Ok(jpeg)
 }
@@ -521,6 +557,33 @@ fn build_page_content(page: &PreviewPageGeometry, preview: &PreviewInfo) -> Stri
     }
     for marker in &page.markers {
         draw_alignment_frame(&mut out, marker.rect, preview.page_height_pt);
+    }
+    out
+}
+
+fn build_imposition_page_content(preview: &ImpositionPreview) -> String {
+    let mut out = String::new();
+    for placement in &preview.placements {
+        draw_image(
+            &mut out,
+            Rect {
+                x0: placement.image_rect.x0,
+                y0: placement.image_rect.y0,
+                x1: placement.image_rect.x1,
+                y1: placement.image_rect.y1,
+            },
+            preview.page_height_pt,
+        );
+        draw_cut_rect(
+            &mut out,
+            Rect {
+                x0: placement.cut_rect.x0,
+                y0: placement.cut_rect.y0,
+                x1: placement.cut_rect.x1,
+                y1: placement.cut_rect.y1,
+            },
+            preview.page_height_pt,
+        );
     }
     out
 }
@@ -574,6 +637,19 @@ fn draw_image(out: &mut String, dest: Rect, page_h: f64) {
     ));
 }
 
+fn draw_cut_rect(out: &mut String, rect: Rect, page_h: f64) {
+    let y = pdf_y(rect.y0, rect.height(), page_h);
+    out.push_str("q\n");
+    set_stroke(out, 0.62, 0.62, 0.62, 0.35, None);
+    out.push_str(&format!(
+        "{:.3} {:.3} {:.3} {:.3} re S\nQ\n",
+        rect.x0,
+        y,
+        rect.width(),
+        rect.height()
+    ));
+}
+
 fn pdf_y(y_top: f64, h: f64, page_h: f64) -> f64 {
     page_h - y_top - h
 }
@@ -622,6 +698,46 @@ fn draw_alignment_frame_path(
 // Minimal PDF writer.
 // -----------------------------------------------------------------------------
 
+/// Write a one-page document with a reusable image resource.
+///
+/// `content` may invoke `/Im0 Do` any number of times, while this writer adds
+/// exactly one image XObject to the document.
+fn write_single_page_pdf(
+    page_w: f64,
+    page_h: f64,
+    content: &str,
+    image: &[u8],
+    image_w: u32,
+    image_h: u32,
+) -> Vec<u8> {
+    let mut objects: Vec<Vec<u8>> = Vec::new();
+    objects.push(b"<< /Type /Catalog /Pages 2 0 R >>".to_vec());
+    objects.push(b"<< /Type /Pages /Kids [3 0 R] /Count 1 >>".to_vec());
+    objects.push(
+        format!(
+            "<< /Type /Page /Parent 2 0 R /MediaBox [0 0 {:.3} {:.3}] /Resources << /XObject << /Im0 5 0 R >> >> /Contents 4 0 R >>",
+            page_w, page_h
+        )
+        .into_bytes(),
+    );
+    objects.push(stream_object(content.as_bytes()));
+    objects.push(image_object(image, image_w, image_h));
+    finish_pdf(objects)
+}
+
+fn image_object(image: &[u8], image_w: u32, image_h: u32) -> Vec<u8> {
+    let mut out = format!(
+        "<< /Type /XObject /Subtype /Image /Width {} /Height {} /ColorSpace /DeviceRGB /BitsPerComponent 8 /Filter /DCTDecode /Length {} >>\nstream\n",
+        image_w,
+        image_h,
+        image.len()
+    )
+    .into_bytes();
+    out.extend_from_slice(image);
+    out.extend_from_slice(b"\nendstream");
+    out
+}
+
 fn write_pdf(page_w: f64, page_h: f64, pages: &[PageChunk]) -> Vec<u8> {
     let mut objects: Vec<Vec<u8>> = Vec::new();
     let page_count = pages.len();
@@ -643,15 +759,13 @@ fn write_pdf(page_w: f64, page_h: f64, pages: &[PageChunk]) -> Vec<u8> {
             pages_obj, page_w, page_h, image_obj, content_obj
         ).into_bytes());
         objects.push(stream_object(p.content.as_bytes()));
-        let mut img_dict = format!(
-            "<< /Type /XObject /Subtype /Image /Width {} /Height {} /ColorSpace /DeviceRGB /BitsPerComponent 8 /Filter /DCTDecode /Length {} >>\nstream\n",
-            p.image_w, p.image_h, p.image.len()
-        ).into_bytes();
-        img_dict.extend_from_slice(&p.image);
-        img_dict.extend_from_slice(b"\nendstream");
-        objects.push(img_dict);
+        objects.push(image_object(&p.image, p.image_w, p.image_h));
     }
 
+    finish_pdf(objects)
+}
+
+fn finish_pdf(objects: Vec<Vec<u8>>) -> Vec<u8> {
     let mut out = Vec::new();
     out.extend_from_slice(b"%PDF-1.4\n%\xE2\xE3\xCF\xD3\n");
     let mut offsets = vec![0usize];
@@ -689,6 +803,7 @@ fn stream_object(data: &[u8]) -> Vec<u8> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::imposition::{resolve_imposition, ImpositionOptions};
     use crate::layout::{default_options, resolve_layout};
 
     #[test]
@@ -749,6 +864,42 @@ mod tests {
 
         assert!(vertical_frames > 0);
         assert!(horizontal_frames > 0);
+    }
+
+    #[test]
+    fn imposition_page_reuses_one_image_xobject_for_every_copy() {
+        let options = ImpositionOptions {
+            paper_width_mm: 210.0,
+            paper_height_mm: 297.0,
+            item_width_mm: 105.0,
+            item_height_mm: 148.0,
+            safety_top_mm: 3.0,
+            safety_right_mm: 4.0,
+            safety_bottom_mm: 5.0,
+            safety_left_mm: 6.0,
+        };
+        let preview = resolve_imposition(200, 100, &options).unwrap();
+        let content = build_imposition_page_content(&preview);
+        assert_eq!(content.matches("/Im0 Do").count(), preview.copies as usize);
+        assert_eq!(content.matches(" re S").count(), preview.copies as usize);
+
+        let pdf = write_single_page_pdf(
+            preview.page_width_pt,
+            preview.page_height_pt,
+            &content,
+            b"not-a-real-jpeg",
+            200,
+            100,
+        );
+        assert_eq!(count_bytes(&pdf, b"/Subtype /Image"), 1);
+        assert_eq!(count_bytes(&pdf, b"/Im0 Do"), preview.copies as usize);
+    }
+
+    fn count_bytes(haystack: &[u8], needle: &[u8]) -> usize {
+        haystack
+            .windows(needle.len())
+            .filter(|window| *window == needle)
+            .count()
     }
 
     fn assert_close(actual: f64, expected: f64) {

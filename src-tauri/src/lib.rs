@@ -1,6 +1,8 @@
+pub mod imposition;
 pub mod layout;
 mod pdf_output;
 
+use imposition::{resolve_imposition, ImpositionOptions, ImpositionPreview};
 use layout::{resolve_layout, PosterOptions, PreviewInfo};
 use pdf_output::PreviewGeometry;
 use serde::Serialize;
@@ -31,6 +33,13 @@ pub struct GenerateResult {
     pub output: String,
 }
 
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct GenerateImpositionResult {
+    pub copies: u32,
+    pub output: String,
+}
+
 pub fn read_image_size(path: &str) -> Result<(u32, u32), AppError> {
     let reader = image::ImageReader::open(path)?.with_guessed_format()?;
     Ok(reader.into_dimensions()?)
@@ -40,6 +49,15 @@ pub fn read_image_size(path: &str) -> Result<(u32, u32), AppError> {
 fn inspect_image(path: String, options: PosterOptions) -> Result<PreviewInfo, AppError> {
     let (w, h) = read_image_size(&path)?;
     resolve_layout(w, h, &options).map_err(AppError::Message)
+}
+
+#[tauri::command]
+fn inspect_imposition(
+    path: String,
+    options: ImpositionOptions,
+) -> Result<ImpositionPreview, AppError> {
+    let (w, h) = read_image_size(&path)?;
+    resolve_imposition(w, h, &options).map_err(AppError::Message)
 }
 
 #[tauri::command]
@@ -74,6 +92,30 @@ pub fn generate_poster_file(
     pdf_output::generate(&image, &output_string, &options, &preview).map_err(AppError::Message)?;
     Ok(GenerateResult {
         pages: preview.cols * preview.rows,
+        output: output_string,
+    })
+}
+
+pub fn generate_imposition_file(
+    input: String,
+    output_name: String,
+    overwrite: bool,
+    options: ImpositionOptions,
+) -> Result<GenerateImpositionResult, AppError> {
+    if !Path::new(&input).exists() {
+        return Err(AppError::Message("Input file does not exist".into()));
+    }
+    let output = default_output_path(&input, &output_name)?;
+    if output.exists() && !overwrite {
+        return Err(AppError::Message("Output file already exists".into()));
+    }
+    let output_string = output.to_string_lossy().to_string();
+    let image = image::open(&input)?;
+    let preview =
+        resolve_imposition(image.width(), image.height(), &options).map_err(AppError::Message)?;
+    pdf_output::generate_imposition(&image, &output_string, &preview).map_err(AppError::Message)?;
+    Ok(GenerateImpositionResult {
+        copies: preview.copies,
         output: output_string,
     })
 }
@@ -115,15 +157,86 @@ fn generate_poster(
     generate_poster_file(input, output_name, overwrite, options)
 }
 
+#[tauri::command]
+fn generate_imposition(
+    input: String,
+    output_name: String,
+    overwrite: bool,
+    options: ImpositionOptions,
+) -> Result<GenerateImpositionResult, AppError> {
+    generate_imposition_file(input, output_name, overwrite, options)
+}
+
 pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_dialog::init())
         .invoke_handler(tauri::generate_handler![
             inspect_image,
+            inspect_imposition,
             preview_geometry,
             output_exists,
-            generate_poster
+            generate_poster,
+            generate_imposition
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use image::{DynamicImage, Rgb, RgbImage};
+
+    #[test]
+    fn generates_a_single_page_imposition_pdf_file() {
+        let unique = format!(
+            "poster-maker-imposition-{}-{}",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+        );
+        let temp = std::env::temp_dir();
+        let input = temp.join(format!("{unique}.png"));
+        let output_name = format!("{unique}.pdf");
+        let output = temp.join(&output_name);
+        DynamicImage::ImageRgb8(RgbImage::from_pixel(200, 100, Rgb([240, 120, 40])))
+            .save(&input)
+            .unwrap();
+
+        let options = ImpositionOptions {
+            paper_width_mm: 210.0,
+            paper_height_mm: 297.0,
+            item_width_mm: 105.0,
+            item_height_mm: 148.0,
+            safety_top_mm: 15.0,
+            safety_right_mm: 15.0,
+            safety_bottom_mm: 15.0,
+            safety_left_mm: 15.0,
+        };
+        let result = generate_imposition_file(
+            input.to_string_lossy().to_string(),
+            output_name,
+            false,
+            options,
+        )
+        .unwrap();
+        let pdf = std::fs::read(&output).unwrap();
+
+        assert_eq!(result.copies, 4);
+        assert!(pdf.starts_with(b"%PDF-1.4"));
+        assert_eq!(count_bytes(&pdf, b"/Type /Page "), 1);
+        assert_eq!(count_bytes(&pdf, b"/Subtype /Image"), 1);
+
+        let _ = std::fs::remove_file(input);
+        let _ = std::fs::remove_file(output);
+    }
+
+    fn count_bytes(haystack: &[u8], needle: &[u8]) -> usize {
+        haystack
+            .windows(needle.len())
+            .filter(|window| *window == needle)
+            .count()
+    }
 }
