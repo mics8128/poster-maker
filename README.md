@@ -6,7 +6,7 @@ Poster Maker 是一個海報分割工具：選一張圖片，輸出多頁 A4 PDF
 
 ## 下載
 
-最新版本：`v0.3.0`
+最新版本：`v0.3.1`
 
 GitHub Releases：
 
