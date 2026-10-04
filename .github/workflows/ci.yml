@@ -5,39 +5,16 @@ on:
   push:
     branches:
       - master
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
 
 jobs:
-  test:
-    name: Test (${{ matrix.os }})
-    runs-on: ${{ matrix.os }}
-    strategy:
-      fail-fast: false
-      matrix:
-        os:
-          - macos-14
-          - windows-latest
-    steps:
-      - uses: actions/checkout@v6
-
-      - name: Install pnpm
-        uses: pnpm/action-setup@v5
-        with:
-          version: 10
-
-      - name: Setup Node
-        uses: actions/setup-node@v6
-        with:
-          node-version: 22
-          cache: pnpm
-
-      - name: Setup Rust
-        uses: dtolnay/rust-toolchain@stable
-
-      - name: Install frontend deps
-        run: pnpm install --frozen-lockfile
-
-      - name: Build frontend
-        run: pnpm build
-
-      - name: Run Rust tests
-        run: cargo test --manifest-path src-tauri/Cargo.toml
+  build:
+    # The same build-only workflow validates PRs and produces release installers.
+    uses: ./.github/workflows/build.yml

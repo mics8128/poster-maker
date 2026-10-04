@@ -6,7 +6,7 @@ Poster Maker 是一個海報分割工具：選一張圖片，輸出多頁 A4 PDF
 
 ## 下載
 
-最新版本：`v0.3.1`
+最新版本：`v0.3.2`
 
 GitHub Releases：
 
@@ -60,7 +60,7 @@ app 是 ad-hoc signed、未經 Apple notarization，所以從網路下載後會�
 安裝依賴：
 
 ```bash
-pnpm install
+pnpm install --frozen-lockfile
 ```
 
 跑 GUI：
@@ -72,8 +72,11 @@ pnpm tauri dev
 測試 / build：
 
 ```bash
+pnpm check:version
+pnpm test:scripts
 pnpm build
-cd src-tauri && cargo test
+cargo fmt --manifest-path src-tauri/Cargo.toml --check
+cargo test --locked --manifest-path src-tauri/Cargo.toml
 ```
 
 如果 dev server 卡住：
@@ -145,14 +148,16 @@ scripts/build_macos_alpha.sh
 package.json
 ```
 
-同步到 Tauri / Cargo：
+同步到 Tauri / Cargo / Cargo.lock（不升級依賴）：
 
 ```bash
 pnpm sync-version
-cargo update --manifest-path src-tauri/Cargo.toml -p poster-maker
+pnpm check:version
 ```
 
 前端直接讀 `package.json` 版本號。
+
+CI 會驗證版本一致性、測試並打包兩個平台，但不發布。新 tag 的發布與失敗處理見 [發布流程](docs/RELEASING.md)。
 
 ## 專案結構
 
@@ -162,7 +167,9 @@ src-tauri/src/layout.rs      layout / best fit
 src-tauri/src/pdf_output.rs  shared preview/PDF geometry + minimal PDF writer
 src-tauri/src/cli.rs         CLI entrypoint
 scripts/build_macos_alpha.sh local macOS packaging
-scripts/sync-version.mjs     version sync helper
+scripts/sync-version.mjs     version sync / check helper
+tests/release-scripts.test.mjs release script regression tests
+docs/RELEASING.md            build-only / release runbook
 ```
 
 ## 已知限制 / 下一步

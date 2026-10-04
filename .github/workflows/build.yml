@@ -1,0 +1,83 @@
+name: Build installers
+
+on:
+  workflow_call:
+    inputs:
+      ref:
+        description: Exact source commit to build (defaults to the calling CI ref)
+        type: string
+        required: false
+        default: ''
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    name: Build (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: macos-15
+            target: aarch64-apple-darwin
+            bundles: dmg
+            artifact: bundles-aarch64-apple-darwin
+            path: src-tauri/target/aarch64-apple-darwin/release/bundle/dmg/*.dmg
+          - os: windows-latest
+            target: x86_64-pc-windows-msvc
+            bundles: nsis
+            artifact: bundles-x86_64-pc-windows-msvc
+            path: src-tauri/target/x86_64-pc-windows-msvc/release/bundle/nsis/*setup.exe
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: ${{ inputs.ref }}
+
+      - name: Install pnpm
+        uses: pnpm/action-setup@v5
+        with:
+          version: 10
+
+      - name: Setup Node
+        uses: actions/setup-node@v6
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.target }}
+          components: rustfmt
+
+      - name: Install frontend deps
+        run: pnpm install --frozen-lockfile
+
+      - name: Test release scripts
+        run: pnpm test:scripts
+
+      - name: Check committed versions
+        run: pnpm check:version
+
+      - name: Check Rust formatting
+        run: cargo fmt --manifest-path src-tauri/Cargo.toml --check
+
+      - name: Run Rust tests
+        run: cargo test --locked --manifest-path src-tauri/Cargo.toml --target ${{ matrix.target }}
+
+      # Tauri runs pnpm build (TypeScript + Vite) before packaging.
+      # No release token, tag, or publication action is used by this workflow.
+      - name: Build Tauri installer
+        run: pnpm tauri build --ci --target ${{ matrix.target }} --bundles ${{ matrix.bundles }} -- --locked
+
+      - name: Verify macOS app signature
+        if: runner.os == 'macOS'
+        run: codesign --verify --deep --strict --verbose=2 "src-tauri/target/${{ matrix.target }}/release/bundle/macos/Poster Maker.app"
+
+      - uses: actions/upload-artifact@v7
+        with:
+          name: ${{ matrix.artifact }}
+          path: ${{ matrix.path }}
+          if-no-files-found: error

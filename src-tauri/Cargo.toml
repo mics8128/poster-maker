@@ -1,6 +1,6 @@
 [package]
 name = "poster-maker"
-version = "0.3.1"
+version = "0.3.2"
 description = "Image poster tiling tool"
 authors = ["mics"]
 edition = "2021"
