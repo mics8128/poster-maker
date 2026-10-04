@@ -28,7 +28,7 @@ cargo test --locked --manifest-path src-tauri/Cargo.toml
 - Rust 格式與 `cargo test --locked`
 - TypeScript／Vite 前端 build
 - Apple Silicon DMG／Windows NSIS 打包
-- macOS ad-hoc 簽章驗證
+- 唯讀掛載 DMG，驗證內含 app 的 ad-hoc 簽章、arm64 架構與 Applications 捷徑
 - 保存兩個 installer 為 Actions artifacts
 
 也可以在 Actions 的 **CI** 頁面手動選分支執行。這條流程沒有 release 寫入權限，不建立 tag 或 GitHub Release，也不碰既有下載檔。請勿用 Release 的手動執行來做純建置驗證。

@@ -72,9 +72,22 @@ jobs:
       - name: Build Tauri installer
         run: pnpm tauri build --ci --target ${{ matrix.target }} --bundles ${{ matrix.bundles }} -- --locked
 
-      - name: Verify macOS app signature
+      - name: Verify packaged macOS app
         if: runner.os == 'macOS'
-        run: codesign --verify --deep --strict --verbose=2 "src-tauri/target/${{ matrix.target }}/release/bundle/macos/Poster Maker.app"
+        shell: bash
+        run: |
+          version="$(node -p "require('./package.json').version")"
+          dmg="src-tauri/target/${{ matrix.target }}/release/bundle/dmg/Poster Maker_${version}_aarch64.dmg"
+          mount_point="${RUNNER_TEMP}/poster-maker-dmg"
+          hdiutil verify "$dmg"
+          mkdir -p "$mount_point"
+          hdiutil attach "$dmg" -readonly -nobrowse -mountpoint "$mount_point"
+          trap 'hdiutil detach "$mount_point"' EXIT
+          # A dmg-only build removes the staging .app; verify the shipped copy instead.
+          app="$mount_point/Poster Maker.app"
+          codesign --verify --deep --strict --verbose=2 "$app"
+          lipo -verify_arch arm64 "$app/Contents/MacOS/poster-maker"
+          test -L "$mount_point/Applications"
 
       - uses: actions/upload-artifact@v7
         with:
