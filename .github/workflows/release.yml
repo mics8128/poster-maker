@@ -4,150 +4,101 @@ on:
   push:
     tags:
       - "v*.*.*"
-      - "v*.*.*-*"
   workflow_dispatch:
     inputs:
       version:
-        description: "Version/tag to release, e.g. v0.2.0"
+        description: "Existing, unreleased tag to publish, e.g. v0.3.2. For build-only checks use CI instead."
         required: true
-        default: "v0.2.0"
+        type: string
 
 permissions:
-  contents: write
+  contents: read
+
+concurrency:
+  group: release-${{ github.ref_type == 'tag' && github.ref_name || inputs.version }}
+  cancel-in-progress: false
 
 jobs:
-  build-macos-apple-silicon:
-    name: Build macOS Apple Silicon
-    runs-on: macos-14
+  preflight:
+    name: Validate new release
+    runs-on: ubuntu-latest
+    outputs:
+      tag: ${{ steps.source.outputs.tag }}
+      sha: ${{ steps.source.outputs.sha }}
     env:
       RELEASE_TAG: ${{ github.ref_type == 'tag' && github.ref_name || inputs.version }}
+      GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
     steps:
       - uses: actions/checkout@v6
-
-      - name: Install pnpm
-        uses: pnpm/action-setup@v5
         with:
-          version: 10
+          fetch-depth: 0
 
-      - name: Setup Node
-        uses: actions/setup-node@v6
+      - uses: actions/setup-node@v6
         with:
           node-version: 22
-          cache: pnpm
 
-      - name: Setup Rust
-        uses: dtolnay/rust-toolchain@stable
-        with:
-          targets: aarch64-apple-darwin
-
-      - name: Install frontend deps
-        run: pnpm install --frozen-lockfile
-
-      - name: Sync release version
+      - name: Validate tag and preserve existing releases
+        id: source
         shell: bash
         run: |
-          VERSION="${RELEASE_TAG#v}"
-          export VERSION
-          node -e "let p=require('./package.json'); p.version=process.env.VERSION; require('fs').writeFileSync('package.json', JSON.stringify(p, null, 2) + '\n')"
-          pnpm sync-version
-          cargo update --manifest-path src-tauri/Cargo.toml -p poster-maker
+          node scripts/assert-new-release.mjs
+          # Resolve the exact existing tag, not the branch selected for a manual run.
+          sha="$(git rev-parse --verify "refs/tags/${RELEASE_TAG}^{commit}")"
+          git checkout --detach "$sha"
+          node scripts/sync-version.mjs --check "--tag=${RELEASE_TAG}"
+          echo "tag=${RELEASE_TAG}" >> "$GITHUB_OUTPUT"
+          echo "sha=${sha}" >> "$GITHUB_OUTPUT"
 
-      - name: Run tests
-        run: cargo test --manifest-path src-tauri/Cargo.toml --target aarch64-apple-darwin
-
-      - name: Build Tauri bundle
-        uses: tauri-apps/tauri-action@v0
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        with:
-          args: --target aarch64-apple-darwin
-
-      - uses: actions/upload-artifact@v7
-        with:
-          name: bundles-aarch64-apple-darwin
-          path: src-tauri/target/aarch64-apple-darwin/release/bundle/dmg/*.dmg
-          if-no-files-found: error
+  build:
+    name: Build release installers
+    needs: preflight
+    uses: ./.github/workflows/build.yml
+    with:
+      ref: ${{ needs.preflight.outputs.sha }}
 
   publish:
-    name: Publish GitHub Release
-    needs:
-      - build-macos-apple-silicon
-      - build-windows
+    name: Publish verified GitHub Release
+    needs: [preflight, build]
     runs-on: ubuntu-latest
-    steps:
-      - uses: actions/download-artifact@v7
-        with:
-          path: artifacts
-
-      - name: Delete existing release assets
-        shell: bash
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          RELEASE_TAG: ${{ github.ref_type == 'tag' && github.ref_name || inputs.version }}
-        run: |
-          release_id="$(gh api "repos/${GITHUB_REPOSITORY}/releases/tags/${RELEASE_TAG}" --jq '.id' 2>/dev/null || true)"
-          if [[ "$release_id" =~ ^[0-9]+$ ]]; then
-            gh api --paginate "repos/${GITHUB_REPOSITORY}/releases/${release_id}/assets" --jq '.[].id' |
-              while read -r asset_id; do
-                [ -n "$asset_id" ] && gh api -X DELETE "repos/${GITHUB_REPOSITORY}/releases/assets/${asset_id}"
-              done
-          fi
-
-      - name: Publish release
-        uses: softprops/action-gh-release@v3
-        with:
-          tag_name: ${{ github.ref_type == 'tag' && github.ref_name || inputs.version }}
-          name: Poster Maker ${{ github.ref_type == 'tag' && github.ref_name || inputs.version }}
-          prerelease: ${{ contains(github.ref_type == 'tag' && github.ref_name || inputs.version, '-') }}
-          generate_release_notes: true
-          files: artifacts/**/*
-
-  build-windows:
-    name: Build Windows
-    runs-on: windows-latest
+    permissions:
+      contents: write
     env:
-      RELEASE_TAG: ${{ github.ref_type == 'tag' && github.ref_name || inputs.version }}
+      GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      RELEASE_TAG: ${{ needs.preflight.outputs.tag }}
+      RELEASE_SHA: ${{ needs.preflight.outputs.sha }}
     steps:
       - uses: actions/checkout@v6
-
-      - name: Install pnpm
-        uses: pnpm/action-setup@v5
         with:
-          version: 10
+          ref: ${{ needs.preflight.outputs.sha }}
 
-      - name: Setup Node
-        uses: actions/setup-node@v6
+      - uses: actions/setup-node@v6
         with:
           node-version: 22
-          cache: pnpm
 
-      - name: Setup Rust
-        uses: dtolnay/rust-toolchain@stable
+      - uses: actions/download-artifact@v7
+        with:
+          pattern: bundles-*
+          path: artifacts
+          merge-multiple: true
 
-      - name: Install frontend deps
-        run: pnpm install --frozen-lockfile
-
-      - name: Sync release version
+      - name: Prepare and checksum both installers
         shell: bash
         run: |
-          VERSION="${RELEASE_TAG#v}"
-          export VERSION
-          node -e "let p=require('./package.json'); p.version=process.env.VERSION; require('fs').writeFileSync('package.json', JSON.stringify(p, null, 2) + '\n')"
-          pnpm sync-version
-          cargo update --manifest-path src-tauri/Cargo.toml -p poster-maker
+          mkdir release-files
+          version="${RELEASE_TAG#v}"
+          # Explicit filenames fail closed if either platform artifact is missing.
+          # Normalize spaces before checksumming; GitHub also normalizes asset names.
+          cp "artifacts/Poster Maker_${version}_aarch64.dmg" "release-files/Poster.Maker_${version}_aarch64.dmg"
+          cp "artifacts/Poster Maker_${version}_x64-setup.exe" "release-files/Poster.Maker_${version}_x64-setup.exe"
+          cd release-files
+          sha256sum *.dmg *.exe > SHA256SUMS.txt
+          sha256sum --check SHA256SUMS.txt
 
-      - name: Run tests
-        run: cargo test --manifest-path src-tauri/Cargo.toml
-
-      - name: Build Tauri Windows bundles
-        uses: tauri-apps/tauri-action@v0
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        with:
-          args: --bundles nsis
-
-      - uses: actions/upload-artifact@v7
-        with:
-          name: bundles-x86_64-pc-windows-msvc
-          path: src-tauri/target/release/bundle/nsis/*setup.exe
-          if-no-files-found: error
+      - name: Create draft, verify uploaded files, then publish
+        shell: bash
+        run: |
+          node scripts/assert-new-release.mjs
+          # Detect a tag moved while the installers were building.
+          git fetch --no-tags origin "refs/tags/${RELEASE_TAG}"
+          test "$(git rev-parse 'FETCH_HEAD^{commit}')" = "$RELEASE_SHA"
+          node scripts/publish-release.mjs release-files

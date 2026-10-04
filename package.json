@@ -1,7 +1,7 @@
 {
   "name": "poster-maker",
   "private": true,
-  "version": "0.3.1",
+  "version": "0.3.2",
   "type": "module",
   "scripts": {
     "dev": "vite --host 127.0.0.1",
@@ -9,7 +9,9 @@
     "build": "tsc && vite build",
     "preview": "vite preview",
     "tauri": "tauri",
-    "clean": "rm -rf dist src-tauri/target release /tmp/poster-maker-cargo-target ~/Library/Caches/poster-maker"
+    "clean": "rm -rf dist src-tauri/target release /tmp/poster-maker-cargo-target ~/Library/Caches/poster-maker",
+    "check:version": "node scripts/sync-version.mjs --check",
+    "test:scripts": "node --test tests/*.test.mjs"
   },
   "dependencies": {
     "@tauri-apps/api": "^2.11.0",
