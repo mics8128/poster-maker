@@ -86,8 +86,8 @@ jobs:
           # A dmg-only build removes the staging .app; verify the shipped copy instead.
           app="$mount_point/Poster Maker.app"
           codesign --verify --deep --strict --verbose=2 "$app"
-          lipo -verify_arch arm64 "$app/Contents/MacOS/poster-maker"
-          test -L "$mount_point/Applications"
+          lipo "$app/Contents/MacOS/poster-maker" -verify_arch arm64
+          test "$(readlink "$mount_point/Applications")" = /Applications
 
       - uses: actions/upload-artifact@v7
         with:
